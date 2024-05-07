@@ -101,7 +101,7 @@ int main(void)
     EVP_DecryptFinal_ex(aes_gcm_decrypt_context, decrypted + len, &len);
     decrypted_len += len;
     decrypted[decrypted_len] = '\0';
-    if (strncmp(plaintext, (const char *) decrypted, decrypted_len + 1)) {
+    if (strcmp(plaintext, (const char *) decrypted) != 0) {
         printf("Plaintexts don't match.\n");
         return 1;
     }
