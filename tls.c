@@ -65,12 +65,12 @@ int main(void)
         for (i = 0; i < 128; i++) {
             if (master_secret[i] != decrypted_ms[i]) {
                 printf("Master secrets don't match.\n");
-                exit(1);
+                return 1;
             }
         }
     } else {
         printf("Master secrets don't match.\n");
-        exit(1);
+        return 1;
     }
     sha256_context = EVP_MD_CTX_new();
     EVP_DigestInit_ex(sha256_context, EVP_sha256(), NULL);
@@ -103,7 +103,7 @@ int main(void)
     decrypted[decrypted_len] = '\0';
     if (strncmp(plaintext, (const char *) decrypted, decrypted_len + 1)) {
         printf("Plaintexts don't match.\n");
-        exit(1);
+        return 1;
     }
 
     free(decrypted);
@@ -124,4 +124,5 @@ int main(void)
     EVP_MD_CTX_free(hmac_context);
     EVP_PKEY_free(rsa_key_pair);
     EVP_PKEY_CTX_free(rsa_context);
+    return 0;
 }
