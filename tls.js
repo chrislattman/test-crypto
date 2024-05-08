@@ -10,13 +10,13 @@ const rsaPrivateKey = crypto.createPrivateKey({
 });
 
 const serverEcdh = crypto.createECDH("secp384r1");
-const encodedServerEcdhPublicKeySuffix = serverEcdh.generateKeys();
-// hack to encode secp384r1 public key in DER format since Node.js doesn't
-// support it yet :(
+const serverEcdhPublicKeyRaw = serverEcdh.generateKeys();
+// hack to encode secp384r1 public key in DER SPKI format manually since Node.js
+// doesn't support it yet :(
 const prefix = Buffer.from("3076301006072a8648ce3d020106052b81040022036200", "hex");
-const newLength = prefix.length + encodedServerEcdhPublicKeySuffix.length;
+const newLength = prefix.length + serverEcdhPublicKeyRaw.length;
 const encodedServerEcdhPublicKey = Buffer.concat(
-    [prefix, encodedServerEcdhPublicKeySuffix],
+    [prefix, serverEcdhPublicKeyRaw],
     newLength,
 );
 
@@ -38,9 +38,10 @@ if (!crypto.verify(null, keyHash, decodedRsaPublicKey, signature)) {
 // its own hash of the server's encoded ECDH public key to avoid timing attacks
 const decodedServerEcdhPublicKey = encodedServerEcdhPublicKey.subarray(prefix.length);
 const clientEcdh = crypto.createECDH("secp384r1");
-const encodedClientEcdhPublicKeySuffix = clientEcdh.generateKeys();
+const clientEcdhPublicKeyRaw = clientEcdh.generateKeys();
+// manual public key encoding again
 const encodedClientEcdhPublicKey = Buffer.concat(
-    [prefix, encodedClientEcdhPublicKeySuffix],
+    [prefix, clientEcdhPublicKeyRaw],
     newLength,
 );
 const clientMasterSecret = clientEcdh.computeSecret(decodedServerEcdhPublicKey);
