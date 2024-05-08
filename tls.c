@@ -152,7 +152,7 @@ int main(void)
     decrypted[decrypted_len] = '\0';
     if (strcmp(plaintext, (const char *) decrypted) != 0) {
         printf("Plaintexts don't match.\n");
-        return 1;
+        exit(1);
     }
 
     free(decrypted);
