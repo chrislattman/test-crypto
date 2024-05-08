@@ -14,7 +14,10 @@ c:
 	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls.c -lcrypto
 	./tls
 
-clean:
-	rm tls
+rust:
+	cargo run --bin tls
 
-.PHONY: java python nodejs go c clean
+clean:
+	rm -rf tls target
+
+.PHONY: java python nodejs go c rust clean

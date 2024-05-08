@@ -95,13 +95,13 @@ public class TLS
             .getInstance("EC")
             .generatePublic(decodedServerEcdhPublicKeySpec);
         KeyPair clientEcdhKeyPair = keyPairGen.generateKeyPair();
-        byte[] encodedClientEcdhPublicKey = clientEcdhKeyPair.getPublic().getEncoded(); // 91 bytes
+        byte[] encodedClientEcdhPublicKey = clientEcdhKeyPair.getPublic().getEncoded();
         KeyAgreement agreement = KeyAgreement.getInstance("ECDH");
         agreement.init(clientEcdhKeyPair.getPrivate());
         agreement.doPhase(decodedServerEcdhPublicKey, true);
-        byte[] clientMasterSecret = agreement.generateSecret(); // 32 bytes
+        byte[] clientMasterSecret = agreement.generateSecret();
         sha256.reset();
-        byte[] aesKeyBytes = sha256.digest(clientMasterSecret); // 32 bytes
+        byte[] aesKeyBytes = sha256.digest(clientMasterSecret);
         SecretKeySpec aesKey = new SecretKeySpec(aesKeyBytes, "AES");
 
         /*

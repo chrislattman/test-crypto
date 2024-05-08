@@ -1,0 +1,12 @@
+[package]
+name = "test-crypto"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "tls"
+path = "tls.rs"
+
+[dependencies]
+hex = "0.4.3"
+ring = "0.17.8"

@@ -12,8 +12,8 @@ int main(void)
     FILE *fp;
     unsigned char *encoded_rsa_public_key, *encoded_rsa_private_key,
         *encoded_server_ecdh_public_key, *ptr, *key_hash, *signature,
-        *encoded_client_ecdh_public_key, *client_shared_secret,
-        *server_shared_secret, *aes_key, iv[12], *ciphertext, tag[16], *decrypted;
+        *encoded_client_ecdh_public_key, *client_master_secret,
+        *server_master_secret, *aes_key, iv[12], *ciphertext, tag[16], *decrypted;
     int encoded_rsa_public_key_len, encoded_rsa_private_key_len,
         encoded_server_ecdh_public_key_len, verified,
         encoded_client_ecdh_public_key_len, len, ciphertext_len, decrypted_len;
@@ -24,10 +24,10 @@ int main(void)
         *client_ecdh_keypair = NULL, *decoded_client_ecdh_public_key = NULL;
     EVP_PKEY_CTX *server_ecdh_param_context, *server_ecdh_key_context,
         *client_ecdh_param_context, *client_ecdh_key_context,
-        *client_shared_secret_context, *server_shared_secret_context;
+        *client_master_secret_context, *server_master_secret_context;
     EVP_MD_CTX *sha256_context, *sign_context, *verify_context;
     unsigned int key_hash_len, aes_key_len;
-    size_t signature_len, client_shared_secret_len, server_shared_secret_len;
+    size_t signature_len, client_master_secret_len, server_master_secret_len;
     const char *plaintext = "Hello world!", *aad = "authenticated but unencrypted data";
     EVP_CIPHER_CTX *aes_gcm_encrypt_context, *aes_gcm_decrypt_context;
 
@@ -100,30 +100,30 @@ int main(void)
     encoded_client_ecdh_public_key = malloc(encoded_client_ecdh_public_key_len);
     ptr = encoded_client_ecdh_public_key;
     i2d_PUBKEY(client_ecdh_keypair, &ptr);
-    client_shared_secret_context = EVP_PKEY_CTX_new(client_ecdh_keypair, NULL);
-    EVP_PKEY_derive_init(client_shared_secret_context);
-    EVP_PKEY_derive_set_peer(client_shared_secret_context, decoded_server_ecdh_public_key);
-    EVP_PKEY_derive(client_shared_secret_context, NULL, &client_shared_secret_len);
-    client_shared_secret = malloc(client_shared_secret_len);
-    EVP_PKEY_derive(client_shared_secret_context, client_shared_secret, &client_shared_secret_len);
+    client_master_secret_context = EVP_PKEY_CTX_new(client_ecdh_keypair, NULL);
+    EVP_PKEY_derive_init(client_master_secret_context);
+    EVP_PKEY_derive_set_peer(client_master_secret_context, decoded_server_ecdh_public_key);
+    EVP_PKEY_derive(client_master_secret_context, NULL, &client_master_secret_len);
+    client_master_secret = malloc(client_master_secret_len);
+    EVP_PKEY_derive(client_master_secret_context, client_master_secret, &client_master_secret_len);
     EVP_MD_CTX_free(sha256_context);
     sha256_context = EVP_MD_CTX_new();
     EVP_DigestInit_ex(sha256_context, EVP_sha256(), NULL);
-    EVP_DigestUpdate(sha256_context, client_shared_secret, client_shared_secret_len);
+    EVP_DigestUpdate(sha256_context, client_master_secret, client_master_secret_len);
     aes_key_len = EVP_MD_get_size(EVP_sha256());
     aes_key = malloc(aes_key_len);
     EVP_DigestFinal_ex(sha256_context, aes_key, &aes_key_len);
 
     const_ptr = encoded_client_ecdh_public_key;
     d2i_PUBKEY(&decoded_client_ecdh_public_key, &const_ptr, encoded_client_ecdh_public_key_len);
-    server_shared_secret_context = EVP_PKEY_CTX_new(server_ecdh_keypair, NULL);
-    EVP_PKEY_derive_init(server_shared_secret_context);
-    EVP_PKEY_derive_set_peer(server_shared_secret_context, decoded_client_ecdh_public_key);
-    EVP_PKEY_derive(server_shared_secret_context, NULL, &server_shared_secret_len);
-    server_shared_secret = malloc(server_shared_secret_len);
-    EVP_PKEY_derive(server_shared_secret_context, server_shared_secret, &server_shared_secret_len);
-    if (client_shared_secret_len != server_shared_secret_len ||
-            memcmp(client_shared_secret, server_shared_secret, client_shared_secret_len) != 0) {
+    server_master_secret_context = EVP_PKEY_CTX_new(server_ecdh_keypair, NULL);
+    EVP_PKEY_derive_init(server_master_secret_context);
+    EVP_PKEY_derive_set_peer(server_master_secret_context, decoded_client_ecdh_public_key);
+    EVP_PKEY_derive(server_master_secret_context, NULL, &server_master_secret_len);
+    server_master_secret = malloc(server_master_secret_len);
+    EVP_PKEY_derive(server_master_secret_context, server_master_secret, &server_master_secret_len);
+    if (client_master_secret_len != server_master_secret_len ||
+            memcmp(client_master_secret, server_master_secret, client_master_secret_len) != 0) {
         printf("Master secrets don't match.\n");
         exit(1);
     }
@@ -159,13 +159,13 @@ int main(void)
     EVP_CIPHER_CTX_free(aes_gcm_decrypt_context);
     free(ciphertext);
     EVP_CIPHER_CTX_free(aes_gcm_encrypt_context);
-    free(server_shared_secret);
-    EVP_PKEY_CTX_free(server_shared_secret_context);
+    free(server_master_secret);
+    EVP_PKEY_CTX_free(server_master_secret_context);
     EVP_PKEY_free(decoded_client_ecdh_public_key);
     free(aes_key);
     EVP_MD_CTX_free(sha256_context);
-    free(client_shared_secret);
-    EVP_PKEY_CTX_free(client_shared_secret_context);
+    free(client_master_secret);
+    EVP_PKEY_CTX_free(client_master_secret_context);
     free(encoded_client_ecdh_public_key);
     EVP_PKEY_free(client_ecdh_keypair);
     EVP_PKEY_CTX_free(client_ecdh_key_context);
