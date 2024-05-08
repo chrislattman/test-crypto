@@ -2,47 +2,79 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
+	"crypto/ecdh"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"log"
+	"os"
 )
 
-var PRESHARED_SECRET = [...]byte{0x50, 0x52, 0x45, 0x53, 0x48, 0x41, 0x52,
-	0x45, 0x44, 0x5f, 0x53, 0x45, 0x43, 0x52, 0x45, 0x54}
-
 func main() {
+	encodedRsaPublicKey, _ := os.ReadFile("public_key.der")
+	encodedRsaPrivateKey, _ := os.ReadFile("private_key.der")
+	var rsaPrivateKey *rsa.PrivateKey
+	key, _ := x509.ParsePKCS8PrivateKey(encodedRsaPrivateKey)
+	switch key := key.(type) {
+	case *rsa.PrivateKey:
+		rsaPrivateKey = key
+	default:
+		log.Fatalln("Error parsing encodedRsaPrivateKey")
+	}
+
 	rng := rand.Reader
+	serverEcdhPrivateKey, _ := ecdh.P384().GenerateKey(rng)
+	encodedServerEcdhPublicKey, _ := x509.MarshalPKIXPublicKey(serverEcdhPrivateKey.PublicKey())
 
-	rsaPrivateKey, _ := rsa.GenerateKey(rng, 2048)
-	rsaPublicKey := rsaPrivateKey.PublicKey
-	encodedRsaPublicKey, _ := x509.MarshalPKIXPublicKey(&rsaPublicKey)
-
-	h := hmac.New(sha256.New, PRESHARED_SECRET[:])
-	h.Write(encodedRsaPublicKey)
-	// mac := h.Sum(nil)
+	keyHash := sha256.Sum256(encodedServerEcdhPublicKey)
+	signature, _ := rsa.SignPKCS1v15(nil, rsaPrivateKey, crypto.SHA256, keyHash[:])
 
 	var decodedRsaPublicKey *rsa.PublicKey
-	pub, _ := x509.ParsePKIXPublicKey(encodedRsaPublicKey)
-	switch pub := pub.(type) {
+	key, _ = x509.ParsePKIXPublicKey(encodedRsaPublicKey)
+	switch key := key.(type) {
 	case *rsa.PublicKey:
-		decodedRsaPublicKey = pub
+		decodedRsaPublicKey = key
 	default:
 		log.Fatalln("Error parsing encodedRsaPublicKey")
 	}
-	var masterSecret [128]byte
-	rng.Read(masterSecret[:])
-	encryptedMS, _ := rsa.EncryptOAEP(sha256.New(), rng, decodedRsaPublicKey, masterSecret[:], nil)
+	err := rsa.VerifyPKCS1v15(decodedRsaPublicKey, crypto.SHA256, keyHash[:], signature)
+	if err != nil {
+		log.Fatalln("RSA signature wasn't verified.")
+	}
 
-	decryptedMS, _ := rsa.DecryptOAEP(sha256.New(), rng, rsaPrivateKey, encryptedMS, nil)
-	if !bytes.Equal(masterSecret[:], decryptedMS) {
+	// client should use subtle.ConstantTimeCompare() from crypto/subtle to
+	// compare server's hash with its own hash of the server's encoded ECDH
+	// public key to avoid timing attacks
+	var decodedServerEcdhPublicKey *ecdh.PublicKey
+	key, _ = x509.ParsePKIXPublicKey(encodedServerEcdhPublicKey)
+	switch key := key.(type) {
+	case *ecdsa.PublicKey:
+		decodedServerEcdhPublicKey, _ = key.ECDH()
+	default:
+		log.Fatalln("Error parsing encodedServerEcdhPublicKey")
+	}
+	clientEcdhPrivateKey, _ := ecdh.P384().GenerateKey(rng)
+	encodedClientEcdhPublicKey, _ := x509.MarshalPKIXPublicKey(clientEcdhPrivateKey.PublicKey())
+	clientMasterSecret, _ := clientEcdhPrivateKey.ECDH(decodedServerEcdhPublicKey)
+	aesKey := sha256.Sum256(clientMasterSecret)
+
+	var decodedClientEcdhPublicKey *ecdh.PublicKey
+	key, _ = x509.ParsePKIXPublicKey(encodedClientEcdhPublicKey)
+	switch key := key.(type) {
+	case *ecdsa.PublicKey:
+		decodedClientEcdhPublicKey, _ = key.ECDH()
+	default:
+		log.Fatalln("Error parsing encodedClientEcdhPublicKey")
+	}
+	serverMasterSecret, _ := serverEcdhPrivateKey.ECDH(decodedClientEcdhPublicKey)
+	if !bytes.Equal(clientMasterSecret, serverMasterSecret) {
 		log.Fatalln("Master secrets don't match.")
 	}
-	aesKey := sha256.Sum256(decryptedMS)
 
 	plaintext := "Hello world!"
 	aad := []byte("authenticated but unencrypted data")

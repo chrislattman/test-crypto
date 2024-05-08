@@ -1,54 +1,59 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 
-const PRESHARED_SECRET = Buffer.from([0x50, 0x52, 0x45, 0x53, 0x48, 0x41, 0x52,
-     0x45, 0x44, 0x5f, 0x53, 0x45, 0x43, 0x52, 0x45, 0x54]);
-
-const {
-    publicKey: encodedRsaPublicKey,
-    privateKey: rsaPrivateKeyBytes,
-} = crypto.generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    publicKeyEncoding: {
-        type: "spki",
-        format: "der",
-    },
-    privateKeyEncoding: {
-        type: "pkcs8",
-        format: "der",
-    },
+const encodedRsaPublicKey = fs.readFileSync("public_key.der");
+const encodedRsaPrivateKey = fs.readFileSync("private_key.der");
+const rsaPrivateKey = crypto.createPrivateKey({
+    key: encodedRsaPrivateKey,
+    format: "der",
+    type: "pkcs8",
 });
 
-const hmac = crypto.createHmac("sha256", PRESHARED_SECRET);
-hmac.update(encodedRsaPublicKey);
-// const mac = hmac.digest();
+const serverEcdh = crypto.createECDH("secp384r1");
+const encodedServerEcdhPublicKeySuffix = serverEcdh.generateKeys();
+// hack to encode secp384r1 public key in DER format since Node.js doesn't
+// support it yet :(
+const prefix = Buffer.from("3076301006072a8648ce3d020106052b81040022036200", "hex");
+const newLength = prefix.length + encodedServerEcdhPublicKeySuffix.length;
+const encodedServerEcdhPublicKey = Buffer.concat(
+    [prefix, encodedServerEcdhPublicKeySuffix],
+    newLength,
+);
+
+let sha256 = crypto.createHash("sha256");
+sha256.update(encodedServerEcdhPublicKey);
+const keyHash = sha256.digest();
+const signature = crypto.sign(null, keyHash, rsaPrivateKey);
 
 const decodedRsaPublicKey = crypto.createPublicKey({
     key: encodedRsaPublicKey,
     format: "der",
     type: "spki",
 });
-const masterSecret = crypto.randomBytes(128);
-const encryptedMS = crypto.publicEncrypt({
-    key: decodedRsaPublicKey,
-    oaepHash: "sha256",
-}, masterSecret);
-
-const rsaPrivateKey = crypto.createPrivateKey({
-    key: rsaPrivateKeyBytes,
-    format: "der",
-    type: "pkcs8",
-});
-const decryptedMS = crypto.privateDecrypt({
-    key: rsaPrivateKey,
-    oaepHash: "sha256",
-}, encryptedMS);
-if (!masterSecret.equals(decryptedMS)) {
-    throw new Error("Master secrets don't match.");
+if (!crypto.verify(null, keyHash, decodedRsaPublicKey, signature)) {
+    throw new Error("RSA signature wasn't verified.");
 }
-const sha256 = crypto.createHash("sha256");
-sha256.update(decryptedMS);
+
+// client should use crypto.timingSafeEqual() to compare server's hash with
+// its own hash of the server's encoded ECDH public key to avoid timing attacks
+const decodedServerEcdhPublicKey = encodedServerEcdhPublicKey.subarray(prefix.length);
+const clientEcdh = crypto.createECDH("secp384r1");
+const encodedClientEcdhPublicKeySuffix = clientEcdh.generateKeys();
+const encodedClientEcdhPublicKey = Buffer.concat(
+    [prefix, encodedClientEcdhPublicKeySuffix],
+    newLength,
+);
+const clientMasterSecret = clientEcdh.computeSecret(decodedServerEcdhPublicKey);
+sha256 = crypto.createHash("sha256");
+sha256.update(clientMasterSecret);
 const aesKeyBytes = sha256.digest();
 const aesKey = crypto.createSecretKey(aesKeyBytes);
+
+const decodedClientEcdhPublicKey = encodedClientEcdhPublicKey.subarray(prefix.length);
+const serverMasterSecret = serverEcdh.computeSecret(decodedClientEcdhPublicKey);
+if (!clientMasterSecret.equals(serverMasterSecret)) {
+    throw new Error("Master secrets don't match.");
+}
 
 const plaintext = "Hello world!";
 const aad = Buffer.from("authenticated but unencrypted data");
