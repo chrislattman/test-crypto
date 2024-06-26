@@ -11,11 +11,10 @@ go:
 	go run go/tls.go
 
 c:
-	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls.c -lcrypto
-	./tls
+	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls.c -lcrypto && ./tls
 
 rust:
-	cargo run --bin tls
+	cargo run -q --bin tls
 
 clean:
 	rm -rf tls target
