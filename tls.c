@@ -81,7 +81,7 @@ int main(void)
     EVP_DigestVerifyUpdate(verify_context, key_hash, key_hash_len);
     verified = EVP_DigestVerifyFinal(verify_context, (const unsigned char *) signature, signature_len);
     if (!verified) {
-        printf("RSA signature wasn't verified.\n");
+        puts("RSA signature wasn't verified.");
         exit(1);
     }
 
@@ -125,7 +125,7 @@ int main(void)
     EVP_PKEY_derive(server_master_secret_context, server_master_secret, &server_master_secret_len);
     if (client_master_secret_len != server_master_secret_len ||
             memcmp(client_master_secret, server_master_secret, client_master_secret_len) != 0) {
-        printf("Master secrets don't match.\n");
+        puts("Master secrets don't match.");
         exit(1);
     }
 
@@ -152,7 +152,7 @@ int main(void)
     decrypted_len += len;
     decrypted[decrypted_len] = '\0';
     if (strcmp(plaintext, (const char *) decrypted) != 0) {
-        printf("Plaintexts don't match.\n");
+        puts("Plaintexts don't match.");
         exit(1);
     }
 
