@@ -50,13 +50,13 @@ public class TLS
          * key is assumed to be known and trusted by both parties.
          *
          * Nonetheless, the server sends its encoded RSA public key used to sign
-         * its encoded ECDH public key, as well as the encoded ECDH public key
-         * itself, the SHA-256 hash of the encoded ECDH public key, and the RSA
-         * signature of the hash to the client.
+         * its encoded ECDH public key, the encoded ECDH public key itself, the
+         * SHA-256 hash of the encoded ECDH public key, and the RSA signature of
+         * the hash to the client.
          *
          * Normally, the RSA public key is part of an X.509 certificate, which
          * itself is part of a chain of signed certificates, ultimately ending
-         * with a root certificate installed on the computer).
+         * with a root certificate installed on the computer.
          */
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] keyHash = sha256.digest(encodedServerEcdhPublicKey);
