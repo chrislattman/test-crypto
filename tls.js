@@ -23,6 +23,8 @@ const encodedServerEcdhPublicKey = Buffer.concat(
 let sha256 = crypto.createHash("sha256");
 sha256.update(encodedServerEcdhPublicKey);
 const keyHash = sha256.digest();
+rsaPrivateKey.padding = crypto.constants.RSA_PKCS1_PSS_PADDING;
+rsaPrivateKey.saltLength = crypto.constants.RSA_PSS_SALTLEN_MAX_SIGN;
 const signature = crypto.sign(null, keyHash, rsaPrivateKey);
 
 const decodedRsaPublicKey = crypto.createPublicKey({
@@ -30,6 +32,8 @@ const decodedRsaPublicKey = crypto.createPublicKey({
     format: "der",
     type: "spki",
 });
+decodedRsaPublicKey.padding = crypto.constants.RSA_PKCS1_PSS_PADDING;
+decodedRsaPublicKey.saltLength = crypto.constants.RSA_PSS_SALTLEN_MAX_SIGN;
 if (!crypto.verify(null, keyHash, decodedRsaPublicKey, signature)) {
     throw new Error("RSA signature wasn't verified.");
 }

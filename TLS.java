@@ -10,7 +10,9 @@ import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
+import java.security.spec.MGF1ParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.PSSParameterSpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 
@@ -49,10 +51,12 @@ public class TLS
          * In the absence of a certificate authority, the server's RSA public
          * key is assumed to be known and trusted by both parties.
          *
-         * Nonetheless, the server sends its encoded RSA public key used to sign
-         * its encoded ECDH public key, the encoded ECDH public key itself, the
-         * SHA-256 hash of the encoded ECDH public key, and the RSA signature of
-         * the hash to the client.
+         * Nonetheless, the server sends: its encoded ECDH public key (120 bytes
+         * long), the SHA-256 hash of the encoded ECDH public key (32 bytes
+         * long), the RSA signature of the hash (256 bytes long), and its
+         * encoded RSA public key (used to verify the signature) to the client
+         * (294 bytes long). This example chooses to sign with PSS instead of
+         * PKCS#1 v1.5 for better security.
          *
          * Normally, the RSA public key is part of an X.509 certificate, which
          * itself is part of a chain of signed certificates, ultimately ending
@@ -60,7 +64,10 @@ public class TLS
          */
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] keyHash = sha256.digest(encodedServerEcdhPublicKey);
-        Signature rsaSign = Signature.getInstance("NONEwithRSA");
+        Signature rsaSign = Signature.getInstance("RSASSA-PSS");
+        PSSParameterSpec pssSpec = new PSSParameterSpec("SHA-256",
+            "MGF1", MGF1ParameterSpec.SHA256, 222, 1);
+        rsaSign.setParameter(pssSpec);
         rsaSign.initSign(rsaPrivateKey);
         rsaSign.update(keyHash);
         byte[] signature = rsaSign.sign();
@@ -88,9 +95,10 @@ public class TLS
          * or shared secret) using its ECDH private key and the server's ECDH
          * public key, and hashes that master secret with SHA-256 to generate a
          * 256-bit AES secret key. It then sends its encoded ECDH public key to
-         * the server.
+         * the server (also 120 bytes long).
          */
-        X509EncodedKeySpec decodedServerEcdhPublicKeySpec = new X509EncodedKeySpec(encodedServerEcdhPublicKey);
+        X509EncodedKeySpec decodedServerEcdhPublicKeySpec = new X509EncodedKeySpec(
+            encodedServerEcdhPublicKey);
         PublicKey decodedServerEcdhPublicKey = KeyFactory
             .getInstance("EC")
             .generatePublic(decodedServerEcdhPublicKeySpec);
@@ -108,9 +116,10 @@ public class TLS
          * The server decodes the client's ECDH public key and generates the
          * master secret using its ECDH private key and the client's ECDH public
          * key. Then it generates the AES secret key the same way the client
-         * does.
+         * does. Both master secrets should be 48 bytes long.
          */
-        X509EncodedKeySpec decodedClientEcdhPublicKeySpec = new X509EncodedKeySpec(encodedClientEcdhPublicKey);
+        X509EncodedKeySpec decodedClientEcdhPublicKeySpec = new X509EncodedKeySpec(
+            encodedClientEcdhPublicKey);
         PublicKey decodedClientEcdhPublicKey = KeyFactory
             .getInstance("EC")
             .generatePublic(decodedClientEcdhPublicKeySpec);

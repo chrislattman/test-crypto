@@ -32,7 +32,8 @@ func main() {
 	encodedServerEcdhPublicKey, _ := x509.MarshalPKIXPublicKey(serverEcdhPrivateKey.PublicKey())
 
 	keyHash := sha256.Sum256(encodedServerEcdhPublicKey)
-	signature, _ := rsa.SignPKCS1v15(nil, rsaPrivateKey, crypto.SHA256, keyHash[:])
+	opts := rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthAuto}
+	signature, _ := rsa.SignPSS(rng, rsaPrivateKey, crypto.SHA256, keyHash[:], &opts)
 
 	var decodedRsaPublicKey *rsa.PublicKey
 	key, _ = x509.ParsePKIXPublicKey(encodedRsaPublicKey)
@@ -42,7 +43,7 @@ func main() {
 	default:
 		log.Fatalln("Error parsing encodedRsaPublicKey")
 	}
-	err := rsa.VerifyPKCS1v15(decodedRsaPublicKey, crypto.SHA256, keyHash[:], signature)
+	err := rsa.VerifyPSS(decodedRsaPublicKey, crypto.SHA256, keyHash[:], signature, &opts)
 	if err != nil {
 		log.Fatalln("RSA signature wasn't verified.")
 	}

@@ -24,6 +24,7 @@ int main(void)
         *decoded_server_ecdh_public_key = NULL, *client_ecdh_params = NULL,
         *client_ecdh_keypair = NULL, *decoded_client_ecdh_public_key = NULL;
     EVP_PKEY_CTX *server_ecdh_param_context, *server_ecdh_key_context,
+        *rsa_private_key_ctx = NULL, *encoded_rsa_public_key_ctx = NULL,
         *client_ecdh_param_context, *client_ecdh_key_context,
         *client_master_secret_context, *server_master_secret_context;
     EVP_MD_CTX *sha256_context, *sign_context, *verify_context;
@@ -68,7 +69,9 @@ int main(void)
     key_hash = malloc(key_hash_len);
     EVP_DigestFinal_ex(sha256_context, key_hash, &key_hash_len);
     sign_context = EVP_MD_CTX_new();
-    EVP_DigestSignInit(sign_context, NULL, EVP_sha256(), NULL, rsa_private_key);
+    EVP_DigestSignInit(sign_context, &rsa_private_key_ctx, EVP_sha256(), NULL, rsa_private_key);
+    EVP_PKEY_CTX_set_rsa_padding(rsa_private_key_ctx, RSA_PKCS1_PSS_PADDING);
+    EVP_PKEY_CTX_set_rsa_pss_saltlen(rsa_private_key_ctx, -2);
     EVP_DigestSignUpdate(sign_context, key_hash, key_hash_len);
     EVP_DigestSignFinal(sign_context, NULL, &signature_len);
     signature = malloc(signature_len);
@@ -77,7 +80,10 @@ int main(void)
     const_ptr = encoded_rsa_public_key;
     d2i_PUBKEY(&decoded_rsa_public_key, &const_ptr, encoded_rsa_public_key_len);
     verify_context = EVP_MD_CTX_new();
-    EVP_DigestVerifyInit(verify_context, NULL, EVP_sha256(), NULL, decoded_rsa_public_key);
+    EVP_DigestVerifyInit(verify_context, &encoded_rsa_public_key_ctx, EVP_sha256(),
+        NULL, decoded_rsa_public_key);
+    EVP_PKEY_CTX_set_rsa_padding(encoded_rsa_public_key_ctx, RSA_PKCS1_PSS_PADDING);
+    EVP_PKEY_CTX_set_rsa_pss_saltlen(encoded_rsa_public_key_ctx, -2);
     EVP_DigestVerifyUpdate(verify_context, key_hash, key_hash_len);
     verified = EVP_DigestVerifyFinal(verify_context, (const unsigned char *) signature, signature_len);
     if (!verified) {

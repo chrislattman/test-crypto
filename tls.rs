@@ -20,11 +20,11 @@ fn main() {
 
     // SHA-256 hash of server's ECDH public key is computed by sign()
     let mut signature = vec![0; rsa_private_key.public().modulus_len()];
-    rsa_private_key.sign(&signature::RSA_PKCS1_SHA256, &rng,
+    rsa_private_key.sign(&signature::RSA_PSS_SHA256, &rng,
     encoded_server_ecdh_public_key.as_slice(), &mut signature).unwrap();
 
     let decoded_rsa_public_key = signature
-        ::UnparsedPublicKey::new(&signature::RSA_PKCS1_2048_8192_SHA256,
+        ::UnparsedPublicKey::new(&signature::RSA_PSS_2048_8192_SHA256,
         &encoded_rsa_public_key.as_slice()[24..]); // removing the encoding manually
     decoded_rsa_public_key.verify(encoded_server_ecdh_public_key.as_slice(),
     signature.as_slice()).unwrap_or_else(|_| {
