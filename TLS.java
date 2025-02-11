@@ -66,7 +66,7 @@ public class TLS
         byte[] keyHash = sha256.digest(encodedServerEcdhPublicKey);
         Signature rsaSign = Signature.getInstance("RSASSA-PSS");
         PSSParameterSpec pssSpec = new PSSParameterSpec("SHA-256",
-            "MGF1", MGF1ParameterSpec.SHA256, 222, 1);
+            "MGF1", MGF1ParameterSpec.SHA256, (2048 / 8) - (256 / 8) - 2, 1);
         rsaSign.setParameter(pssSpec);
         rsaSign.initSign(rsaPrivateKey);
         rsaSign.update(keyHash);
@@ -131,7 +131,8 @@ public class TLS
         }
 
         /*
-         * AES-256-GCM is used to encrypt a message. The ciphertext,
+         * AES-256-GCM is used to encrypt a message. The ciphertext (should be
+         * 28 bytes long, 12 bytes of data followed by 16 bytes for the tag),
          * initialization vector (IV, sometimes called a nonce), and additional
          * associated data (AAD) is sent over.
          *

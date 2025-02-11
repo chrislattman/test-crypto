@@ -66,13 +66,15 @@ const aad = Buffer.from("authenticated but unencrypted data");
 const iv = crypto.randomBytes(12);
 const cipher = crypto.createCipheriv("aes-256-gcm", aesKey, iv);
 cipher.setAAD(aad);
-let ciphertext = cipher.update(Buffer.from(plaintext));
-// ciphertext += cipher.final();
+let ciphertext = cipher.update(plaintext);
+ciphertext = Buffer.concat([ciphertext, cipher.final()]);
+const authTag = cipher.getAuthTag();
 
 const decipher = crypto.createDecipheriv("aes-256-gcm", aesKey, iv);
 decipher.setAAD(aad);
+decipher.setAuthTag(authTag);
 let decrypted = decipher.update(ciphertext);
-// decrypted += decipher.final();
+decrypted = Buffer.concat([decrypted, decipher.final()]);
 const recovered = decrypted.toString();
 if (plaintext !== recovered) {
     throw new Error("Plaintexts don't match.");
