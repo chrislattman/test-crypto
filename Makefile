@@ -13,6 +13,9 @@ go:
 c:
 	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls.c -lcrypto && ./tls
 
+winc:
+	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls_cng.c -lbcrypt && ./tls
+
 rust:
 	cargo run -q --bin tls
 
