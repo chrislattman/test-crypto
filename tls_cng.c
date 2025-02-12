@@ -163,6 +163,7 @@ BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlo
     ((BCRYPT_ECCKEY_BLOB*)*eccPubKeyBlob)->cbKey = 48;
     decodedPubKey = pPubKeyInfo->PublicKey.pbData;
     memcpy(*eccPubKeyBlob + sizeof(BCRYPT_ECCKEY_BLOB), decodedPubKey + 1, 96);
+    *eccPubKeyBlobLen = 96 + sizeof(BCRYPT_ECCKEY_BLOB);
 
     LocalFree(pPubKeyInfo);
     return TRUE;
@@ -171,22 +172,22 @@ BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlo
 int main(void) {
     HANDLE hFile;
     DWORD encodedRsaPrivateKeyLen, pPrivKeyInfoLen, derBufLen;
+    PUCHAR encodedRsaPrivateKey, derBuf = NULL;
+    PCRYPT_PRIVATE_KEY_INFO pPrivKeyInfo = NULL;
     // ULONG rsaPublicKeyBlobLen;
+    // PUCHAR rsaPublicKeyBlob;
     ULONG encodedRsaPublicKeyLen, bytesRead, serverEcdhPublicKeyBlobLen,
         encodedServerEcdhPublicKeyLen, hashObjLen, keyHashLen, signatureLen,
         decodedRsaPublicKeyBlobLen, decodedServerEcdhPublicKeyBlobLen,
         clientEcdhPublicKeyBlobLen, encodedClientEcdhPublicKeyLen,
         clientMasterSecretLen, decodedClientEcdhPublicKeyBlobLen,
         serverMasterSecretLen, ciphertextLen, decryptedLen;
-    PUCHAR encodedRsaPrivateKey, derBuf = NULL;
-    // PUCHAR rsaPublicKeyBlob;
     PUCHAR encodedRsaPublicKey, serverEcdhPublicKeyBlob, encodedServerEcdhPublicKey,
         hashObj, keyHash, signature, decodedRsaPublicKeyBlob,
         decodedServerEcdhPublicKeyBlob, clientEcdhPublicKeyBlob,
         encodedClientEcdhPublicKey, clientMasterSecret, aesKeyBytes,
         decodedClientEcdhPublicKeyBlob, serverMasterSecret,
         ciphertext, decrypted;
-    PCRYPT_PRIVATE_KEY_INFO pPrivKeyInfo = NULL;
     BCRYPT_ALG_HANDLE rsa, ecdh, sha256, aes, rng;
     BCRYPT_KEY_HANDLE rsaPrivateKey, serverEcdhKeyPair, rsaPublicKey,
         decodedServerEcdhPublicKey, clientEcdhKeyPair, aesKey, decodedClientEcdhPublicKey;
@@ -220,6 +221,7 @@ int main(void) {
         pPrivKeyInfo->PrivateKey.pbData, pPrivKeyInfo->PrivateKey.cbData,
         CRYPT_DECODE_ALLOC_FLAG, NULL, &derBuf, &derBufLen);
     BCryptImportKeyPair(rsa, NULL, BCRYPT_RSAPRIVATE_BLOB, &rsaPrivateKey, derBuf, derBufLen, 0);
+    HeapFree(GetProcessHeap(), 0, encodedRsaPrivateKey);
     LocalFree(pPrivKeyInfo);
     LocalFree(derBuf);
     // BCryptGenerateKeyPair(rsa, &rsaPrivateKey, 2048, 0);
@@ -229,6 +231,7 @@ int main(void) {
     // BCryptExportKey(rsaPrivateKey, NULL, BCRYPT_RSAPUBLIC_BLOB, rsaPublicKeyBlob,
     //     rsaPublicKeyBlobLen, &rsaPublicKeyBlobLen, 0);
     // ConvertRSABlobToSPKI(rsaPublicKeyBlob, &encodedRsaPublicKey, &encodedRsaPublicKeyLen);
+    // HeapFree(GetProcessHeap(), 0, rsaPublicKeyBlob);
 
     BCryptOpenAlgorithmProvider(&ecdh, BCRYPT_ECDH_P384_ALGORITHM, NULL, 0);
     BCryptGenerateKeyPair(ecdh, &serverEcdhKeyPair, 384, 0);
@@ -244,7 +247,7 @@ int main(void) {
     // Maybe has to do with reusing hash function for AES key?
     BCryptGetProperty(sha256, BCRYPT_OBJECT_LENGTH, (PBYTE)&hashObjLen, sizeof(ULONG), &bytesRead, 0);
     hashObj = HeapAlloc(GetProcessHeap(), 0, hashObjLen);
-    BCryptCreateHash(sha256, &hSha256, NULL, 0, NULL, 0, BCRYPT_HASH_REUSABLE_FLAG);
+    BCryptCreateHash(sha256, &hSha256, hashObj, hashObjLen, NULL, 0, BCRYPT_HASH_REUSABLE_FLAG);
     BCryptHashData(hSha256, encodedServerEcdhPublicKey, encodedServerEcdhPublicKeyLen, 0);
     BCryptGetProperty(sha256, BCRYPT_HASH_LENGTH, (PUCHAR)&keyHashLen, sizeof(ULONG), &bytesRead, 0);
     keyHash = HeapAlloc(GetProcessHeap(), 0, keyHashLen);
@@ -352,8 +355,6 @@ int main(void) {
     BCryptDestroySecret(clientSecret);
     BCryptDestroySecret(serverSecret);
     HeapFree(GetProcessHeap(), 0, encodedRsaPublicKey);
-    HeapFree(GetProcessHeap(), 0, encodedRsaPrivateKey);
-    // HeapFree(GetProcessHeap(), 0, rsaPublicKeyBlob);
     HeapFree(GetProcessHeap(), 0, serverEcdhPublicKeyBlob);
     HeapFree(GetProcessHeap(), 0, encodedServerEcdhPublicKey);
     HeapFree(GetProcessHeap(), 0, hashObj);
