@@ -17,11 +17,55 @@ BOOL ConvertRSABlobToSPKI(PUCHAR rsaPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
     if (!rsaPubKeyBlob || !spkiBuf || !spkiBufLen) {
         return FALSE;
     }
+
+    /*
+    // If the first call to CryptEncodeObjectEx is undesired
+    // (manual ASN.1 encoding follows):
+    BCRYPT_RSAKEY_BLOB* pBlob = (BCRYPT_RSAKEY_BLOB*)rsaPubKeyBlob;
+    PUCHAR exponent = rsaPubKeyBlob + sizeof(BCRYPT_RSAKEY_BLOB);
+    PUCHAR modulus = exponent + pBlob->cbPublicExp;
+    // 11 bytes come from the ASN.1 encoding standard:
+    // 0x30 (sequence tag)
+    // 0x82 (this byte is needed because total length > 128 bytes so 2 bytes follow)
+    // [2 bytes for total length of modulus and exponent]
+    // 0x02 (integer tag)
+    // 0x82 (this byte is needed because 1 + modulus length > 128 bytes so 2 bytes follow)
+    // [2 bytes for modulus length]
+    // 0x00 (leading byte to denote positive integer)
+    // ... (modulus)
+    // 0x02 (integer tag; no 0x82 byte follows since exponent length < 128 bytes)
+    // [1 byte for exponent length]
+    // ... (exponent)
+    // If you exclude ... you get 11 bytes of overhead
+    encodedPubKeyLen = 11 + pBlob->cbPublicExp + pBlob->cbModulus;
+    encodedPubKey = LocalAlloc(LMEM_FIXED, encodedPubKeyLen);
+    if (!encodedPubKey) {
+        return FALSE;
+    }
+    encodedPubKey[0] = 0x30;
+    encodedPubKey[1] = 0x82;
+    ULONG totalLen = 1 + pBlob->cbModulus + pBlob->cbPublicExp + 6;
+    // Windows endianness is switching byte order so memcpy(encodedPubKey + 2, &totalLen, 2); won't work
+    encodedPubKey[2] = (totalLen >> 8) & 0xff;
+    encodedPubKey[3] = totalLen & 0xff;
+    encodedPubKey[4] = 0x02;
+    encodedPubKey[5] = 0x82;
+    ULONG modLenPlus1 = 1 + pBlob->cbModulus;
+    // memcpy(encodedPubKey + 6, &modLenPlus1, 2); // commenting out just in case
+    encodedPubKey[6] = (modLenPlus1 >> 8) & 0xff;
+    encodedPubKey[7] = modLenPlus1 & 0xff;
+    encodedPubKey[8] = 0x00;
+    memcpy(encodedPubKey + 9, modulus, pBlob->cbModulus);
+    encodedPubKey[9 + pBlob->cbModulus] = 0x02;
+    encodedPubKey[9 + pBlob->cbModulus + 1] = (UCHAR)pBlob->cbPublicExp;
+    memcpy(encodedPubKey + 9 + pBlob->cbModulus + 2, exponent, pBlob->cbPublicExp);
+    */
     status = CryptEncodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PUBLIC_KEY_BLOB,
         rsaPubKeyBlob, CRYPT_ENCODE_ALLOC_FLAG, NULL, &encodedPubKey, &encodedPubKeyLen);
     if (!status) {
         return FALSE;
     }
+
     algId.pszObjId = szOID_RSA_RSA;
     pubKeyInfo.Algorithm = algId;
     pubKeyInfo.PublicKey.pbData = encodedPubKey;
@@ -32,6 +76,7 @@ BOOL ConvertRSABlobToSPKI(PUCHAR rsaPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
         LocalFree(encodedPubKey);
         return FALSE;
     }
+
     *spkiBuf = HeapAlloc(GetProcessHeap(), 0, spkiOutBufLen);
     if (!*spkiBuf) {
         LocalFree(encodedPubKey);
@@ -56,11 +101,13 @@ BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlo
     if (!spkiBuf || spkiBufLen <= 0 || !rsaPubKeyBlob || !rsaPubKeyBlobLen) {
         return FALSE;
     }
+
     status = CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
         spkiBuf, spkiBufLen, CRYPT_DECODE_ALLOC_FLAG, NULL, &pPubKeyInfo, &pPubKeyInfoLen);
     if (!status) {
         return FALSE;
     }
+
     status = CryptDecodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PUBLIC_KEY_BLOB,
         pPubKeyInfo->PublicKey.pbData, pPubKeyInfo->PublicKey.cbData,
         CRYPT_DECODE_ALLOC_FLAG, NULL, &decodedPubKey, &decodedPubKeyLen);
@@ -68,6 +115,7 @@ BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlo
         LocalFree(pPubKeyInfo);
         return FALSE;
     }
+
     *rsaPubKeyBlob = HeapAlloc(GetProcessHeap(), 0, decodedPubKeyLen);
     if (!*rsaPubKeyBlob) {
         LocalFree(pPubKeyInfo);
@@ -96,6 +144,7 @@ BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
     if (!eccPubKeyBlob || !spkiBuf || !spkiBufLen) {
         return FALSE;
     }
+
     // CryptEncodeObjectEx doesn't create uncompressed elliptic curve points,
     // so we're doing that manually with encodedPubKey
     x = eccPubKeyBlob + sizeof(BCRYPT_ECCKEY_BLOB);
@@ -104,6 +153,7 @@ BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
     encodedPubKey[0] = 4;
     memcpy(encodedPubKey + 1, x, 48);
     memcpy(encodedPubKey + 49, y, 48);
+
     algId.pszObjId = szOID_ECC_PUBLIC_KEY;
     // Windows doesn't store the right DER-formatted OID for secp381r1
     // PCCRYPT_OID_INFO pOidInfo = CryptFindOIDInfo(CRYPT_OID_INFO_OID_KEY, szOID_ECC_CURVE_P384, 0);
@@ -127,6 +177,7 @@ BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
     if (!status) {
         return FALSE;
     }
+
     *spkiBuf = HeapAlloc(GetProcessHeap(), 0, spkiOutBufLen);
     if (!*spkiBuf) {
         LocalFree(spkiOutBuf);
@@ -149,11 +200,13 @@ BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlo
     if (!spkiBuf || spkiBufLen <= 0 || !eccPubKeyBlob || !eccPubKeyBlobLen) {
         return FALSE;
     }
+
     status = CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO, spkiBuf,
         spkiBufLen, CRYPT_DECODE_ALLOC_FLAG, NULL, &pPubKeyInfo, &pPubKeyInfoLen);
     if (!status) {
         return FALSE;
     }
+
     *eccPubKeyBlob = HeapAlloc(GetProcessHeap(), 0, 96 + sizeof(BCRYPT_ECCKEY_BLOB));
     if (!*eccPubKeyBlob) {
         LocalFree(pPubKeyInfo);
