@@ -8,10 +8,9 @@
 
 BOOL ConvertRSABlobToSPKI(PUCHAR rsaPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufLen) {
     BOOL status;
-    PUCHAR derBuf = NULL, spkiOutBuf = NULL;
-    DWORD derBufLen, spkiOutBufLen;
+    PUCHAR encodedPubKey = NULL, spkiOutBuf = NULL;
     CRYPT_ALGORITHM_IDENTIFIER algId = {0};
-    CRYPT_BIT_BLOB publicKey = {0};
+    DWORD encodedPubKeyLen, spkiOutBufLen;
     CERT_PUBLIC_KEY_INFO pubKeyInfo = {0};
 
     // TODO: could be doing more specific error checking with the magic bits of rsaPubKeyBlob
@@ -19,31 +18,30 @@ BOOL ConvertRSABlobToSPKI(PUCHAR rsaPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
         return FALSE;
     }
     status = CryptEncodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PUBLIC_KEY_BLOB,
-        rsaPubKeyBlob, CRYPT_ENCODE_ALLOC_FLAG, NULL, &derBuf, &derBufLen);
+        rsaPubKeyBlob, CRYPT_ENCODE_ALLOC_FLAG, NULL, &encodedPubKey, &encodedPubKeyLen);
     if (!status) {
         return FALSE;
     }
     algId.pszObjId = szOID_RSA_RSA;
-    publicKey.pbData = derBuf;
-    publicKey.cbData = derBufLen;
     pubKeyInfo.Algorithm = algId;
-    pubKeyInfo.PublicKey = publicKey;
+    pubKeyInfo.PublicKey.pbData = encodedPubKey;
+    pubKeyInfo.PublicKey.cbData = encodedPubKeyLen;
     status = CryptEncodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
         &pubKeyInfo, CRYPT_ENCODE_ALLOC_FLAG, NULL, &spkiOutBuf, &spkiOutBufLen);
     if (!status) {
-        LocalFree(derBuf);
+        LocalFree(encodedPubKey);
         return FALSE;
     }
     *spkiBuf = HeapAlloc(GetProcessHeap(), 0, spkiOutBufLen);
     if (!*spkiBuf) {
-        LocalFree(derBuf);
+        LocalFree(encodedPubKey);
         LocalFree(spkiOutBuf);
         return FALSE;
     }
     memcpy(*spkiBuf, spkiOutBuf, spkiOutBufLen);
     *spkiBufLen = spkiOutBufLen;
 
-    LocalFree(derBuf);
+    LocalFree(encodedPubKey);
     LocalFree(spkiOutBuf);
     return TRUE;
 }
@@ -52,8 +50,8 @@ BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlo
         ULONG *rsaPubKeyBlobLen) {
     BOOL status;
     PCERT_PUBLIC_KEY_INFO pPubKeyInfo = NULL;
-    DWORD pPubKeyInfoLen, derBufLen;
-    PUCHAR derBuf = NULL;
+    DWORD pPubKeyInfoLen, decodedPubKeyLen;
+    PUCHAR decodedPubKey = NULL;
 
     if (!spkiBuf || spkiBufLen <= 0 || !rsaPubKeyBlob || !rsaPubKeyBlobLen) {
         return FALSE;
@@ -65,22 +63,22 @@ BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlo
     }
     status = CryptDecodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PUBLIC_KEY_BLOB,
         pPubKeyInfo->PublicKey.pbData, pPubKeyInfo->PublicKey.cbData,
-        CRYPT_DECODE_ALLOC_FLAG, NULL, &derBuf, &derBufLen);
+        CRYPT_DECODE_ALLOC_FLAG, NULL, &decodedPubKey, &decodedPubKeyLen);
     if (!status) {
         LocalFree(pPubKeyInfo);
         return FALSE;
     }
-    *rsaPubKeyBlob = HeapAlloc(GetProcessHeap(), 0, derBufLen);
+    *rsaPubKeyBlob = HeapAlloc(GetProcessHeap(), 0, decodedPubKeyLen);
     if (!*rsaPubKeyBlob) {
         LocalFree(pPubKeyInfo);
-        LocalFree(derBuf);
+        LocalFree(decodedPubKey);
         return FALSE;
     }
-    memcpy(*rsaPubKeyBlob, derBuf, derBufLen);
-    *rsaPubKeyBlobLen = derBufLen;
+    memcpy(*rsaPubKeyBlob, decodedPubKey, decodedPubKeyLen);
+    *rsaPubKeyBlobLen = decodedPubKeyLen;
 
     LocalFree(pPubKeyInfo);
-    LocalFree(derBuf);
+    LocalFree(decodedPubKey);
     return TRUE;
 }
 
@@ -90,7 +88,6 @@ BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
     // openssl ecparam -name secp384r1 -outform DER | xxd -p | head -n 1
     UCHAR encodedPubKey[97], secp384r1OID[] = { 0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22 };
     CRYPT_ALGORITHM_IDENTIFIER algId = {0};
-    CRYPT_BIT_BLOB publicKey = {0};
     CERT_PUBLIC_KEY_INFO pubKeyInfo = {0};
     BOOL status;
     DWORD spkiOutBufLen;
@@ -122,10 +119,9 @@ BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
     // printf("bytes: %lu\n", pOidInfo->ExtraInfo.cbData);
     algId.Parameters.pbData = secp384r1OID;
     algId.Parameters.cbData = sizeof(secp384r1OID);
-    publicKey.pbData = encodedPubKey;
-    publicKey.cbData = sizeof(encodedPubKey);
     pubKeyInfo.Algorithm = algId;
-    pubKeyInfo.PublicKey = publicKey;
+    pubKeyInfo.PublicKey.pbData = encodedPubKey;
+    pubKeyInfo.PublicKey.cbData = sizeof(encodedPubKey);
     status = CryptEncodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
         &pubKeyInfo, CRYPT_ENCODE_ALLOC_FLAG, NULL, &spkiOutBuf, &spkiOutBufLen);
     if (!status) {
@@ -148,7 +144,7 @@ BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlo
     BOOL status;
     PCERT_PUBLIC_KEY_INFO pPubKeyInfo = NULL;
     DWORD pPubKeyInfoLen;
-    PUCHAR encodedPubKey;
+    PUCHAR decodedPubKey;
 
     if (!spkiBuf || spkiBufLen <= 0 || !eccPubKeyBlob || !eccPubKeyBlobLen) {
         return FALSE;
@@ -165,8 +161,8 @@ BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlo
     }
     ((BCRYPT_ECCKEY_BLOB*)*eccPubKeyBlob)->dwMagic = BCRYPT_ECDH_PUBLIC_P384_MAGIC;
     ((BCRYPT_ECCKEY_BLOB*)*eccPubKeyBlob)->cbKey = 48;
-    encodedPubKey = pPubKeyInfo->PublicKey.pbData;
-    memcpy(*eccPubKeyBlob + sizeof(BCRYPT_ECCKEY_BLOB), encodedPubKey + 1, 96);
+    decodedPubKey = pPubKeyInfo->PublicKey.pbData;
+    memcpy(*eccPubKeyBlob + sizeof(BCRYPT_ECCKEY_BLOB), decodedPubKey + 1, 96);
 
     LocalFree(pPubKeyInfo);
     return TRUE;
