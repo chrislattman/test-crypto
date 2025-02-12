@@ -133,7 +133,7 @@ BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlo
 BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufLen) {
     PUCHAR x, y, spkiOutBuf = NULL;
     // secp384r1 OID (1.3.132.0.34)
-    // openssl ecparam -name secp384r1 -outform DER | xxd -p | head -n 1
+    // $ openssl ecparam -name secp384r1 -outform DER | xxd -p | head -n 1
     UCHAR encodedPubKey[97], secp384r1OID[] = { 0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22 };
     CRYPT_ALGORITHM_IDENTIFIER algId = {0};
     CERT_PUBLIC_KEY_INFO pubKeyInfo = {0};
