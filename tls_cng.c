@@ -1,21 +1,196 @@
-#include <Windows.h>
 #include <stdio.h>
+#include <Windows.h>
+
+// #pragma comment(lib, "bcrypt.lib")
+// #pragma comment(lib, "crypt32.lib")
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 
+BOOL ConvertRSABlobToSPKI(PUCHAR rsaPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufLen) {
+    BOOL status;
+    PUCHAR derBuf = NULL, spkiOutBuf = NULL;
+    DWORD derBufLen, spkiOutBufLen;
+    CRYPT_ALGORITHM_IDENTIFIER algId = {0};
+    CRYPT_BIT_BLOB publicKey = {0};
+    CERT_PUBLIC_KEY_INFO pubKeyInfo = {0};
+
+    // TODO: could be doing more specific error checking with the magic bits of rsaPubKeyBlob
+    if (!rsaPubKeyBlob || !spkiBuf || !spkiBufLen) {
+        return FALSE;
+    }
+    status = CryptEncodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PUBLIC_KEY_BLOB,
+        rsaPubKeyBlob, CRYPT_ENCODE_ALLOC_FLAG, NULL, &derBuf, &derBufLen);
+    if (!status) {
+        return FALSE;
+    }
+    algId.pszObjId = szOID_RSA_RSA;
+    publicKey.pbData = derBuf;
+    publicKey.cbData = derBufLen;
+    pubKeyInfo.Algorithm = algId;
+    pubKeyInfo.PublicKey = publicKey;
+    status = CryptEncodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
+        &pubKeyInfo, CRYPT_ENCODE_ALLOC_FLAG, NULL, &spkiOutBuf, &spkiOutBufLen);
+    if (!status) {
+        LocalFree(derBuf);
+        return FALSE;
+    }
+    *spkiBuf = HeapAlloc(GetProcessHeap(), 0, spkiOutBufLen);
+    if (!*spkiBuf) {
+        LocalFree(derBuf);
+        LocalFree(spkiOutBuf);
+        return FALSE;
+    }
+    memcpy(*spkiBuf, spkiOutBuf, spkiOutBufLen);
+    *spkiBufLen = spkiOutBufLen;
+
+    LocalFree(derBuf);
+    LocalFree(spkiOutBuf);
+    return TRUE;
+}
+
+BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlob,
+        ULONG *rsaPubKeyBlobLen) {
+    BOOL status;
+    PCERT_PUBLIC_KEY_INFO pPubKeyInfo = NULL;
+    DWORD pPubKeyInfoLen, derBufLen;
+    PUCHAR derBuf = NULL;
+
+    if (!spkiBuf || spkiBufLen <= 0 || !rsaPubKeyBlob || !rsaPubKeyBlobLen) {
+        return FALSE;
+    }
+    status = CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
+        spkiBuf, spkiBufLen, CRYPT_DECODE_ALLOC_FLAG, NULL, &pPubKeyInfo, &pPubKeyInfoLen);
+    if (!status) {
+        return FALSE;
+    }
+    status = CryptDecodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PUBLIC_KEY_BLOB,
+        pPubKeyInfo->PublicKey.pbData, pPubKeyInfo->PublicKey.cbData,
+        CRYPT_DECODE_ALLOC_FLAG, NULL, &derBuf, &derBufLen);
+    if (!status) {
+        LocalFree(pPubKeyInfo);
+        return FALSE;
+    }
+    *rsaPubKeyBlob = HeapAlloc(GetProcessHeap(), 0, derBufLen);
+    if (!*rsaPubKeyBlob) {
+        LocalFree(pPubKeyInfo);
+        LocalFree(derBuf);
+        return FALSE;
+    }
+    memcpy(*rsaPubKeyBlob, derBuf, derBufLen);
+    *rsaPubKeyBlobLen = derBufLen;
+
+    LocalFree(pPubKeyInfo);
+    LocalFree(derBuf);
+    return TRUE;
+}
+
+BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufLen) {
+    PUCHAR x, y, spkiOutBuf = NULL;
+    // secp384r1 OID (1.3.132.0.34)
+    // openssl ecparam -name secp384r1 -outform DER | xxd -p | head -n 1
+    UCHAR encodedPubKey[97], secp384r1OID[] = { 0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22 };
+    CRYPT_ALGORITHM_IDENTIFIER algId = {0};
+    CRYPT_BIT_BLOB publicKey = {0};
+    CERT_PUBLIC_KEY_INFO pubKeyInfo = {0};
+    BOOL status;
+    DWORD spkiOutBufLen;
+
+    // TODO: could be doing more specific error checking with the magic bits of eccPubKeyBlob
+    if (!eccPubKeyBlob || !spkiBuf || !spkiBufLen) {
+        return FALSE;
+    }
+    // CryptEncodeObjectEx doesn't create uncompressed elliptic curve points,
+    // so we're doing that manually with encodedPubKey
+    x = eccPubKeyBlob + sizeof(BCRYPT_ECCKEY_BLOB);
+    y = x + 48;
+    // Uncompressed format is 0x04 + X + Y
+    encodedPubKey[0] = 4;
+    memcpy(encodedPubKey + 1, x, 48);
+    memcpy(encodedPubKey + 49, y, 48);
+    algId.pszObjId = szOID_ECC_PUBLIC_KEY;
+    // Windows doesn't store the right DER-formatted OID for secp381r1
+    // PCCRYPT_OID_INFO pOidInfo = CryptFindOIDInfo(CRYPT_OID_INFO_OID_KEY, szOID_ECC_CURVE_P384, 0);
+    // if (!pOidInfo) {
+    //     return FALSE;
+    // }
+    // printf("OID = %s\n", szOID_ECC_CURVE_P384);
+    // printf("Encoded OID: ");
+    // for (DWORD i = 0; i < pOidInfo->ExtraInfo.cbData; i++) {
+    //     printf("%02X ", pOidInfo->ExtraInfo.pbData[i]);
+    // }
+    // printf("\n");
+    // printf("bytes: %lu\n", pOidInfo->ExtraInfo.cbData);
+    algId.Parameters.pbData = secp384r1OID;
+    algId.Parameters.cbData = sizeof(secp384r1OID);
+    publicKey.pbData = encodedPubKey;
+    publicKey.cbData = sizeof(encodedPubKey);
+    pubKeyInfo.Algorithm = algId;
+    pubKeyInfo.PublicKey = publicKey;
+    status = CryptEncodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
+        &pubKeyInfo, CRYPT_ENCODE_ALLOC_FLAG, NULL, &spkiOutBuf, &spkiOutBufLen);
+    if (!status) {
+        return FALSE;
+    }
+    *spkiBuf = HeapAlloc(GetProcessHeap(), 0, spkiOutBufLen);
+    if (!*spkiBuf) {
+        LocalFree(spkiOutBuf);
+        return FALSE;
+    }
+    memcpy(*spkiBuf, spkiOutBuf, spkiOutBufLen);
+    *spkiBufLen = spkiOutBufLen;
+
+    LocalFree(spkiOutBuf);
+    return TRUE;
+}
+
+BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlob,
+        ULONG *eccPubKeyBlobLen) {
+    BOOL status;
+    PCERT_PUBLIC_KEY_INFO pPubKeyInfo = NULL;
+    DWORD pPubKeyInfoLen;
+    PUCHAR encodedPubKey;
+
+    if (!spkiBuf || spkiBufLen <= 0 || !eccPubKeyBlob || !eccPubKeyBlobLen) {
+        return FALSE;
+    }
+    status = CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO, spkiBuf,
+        spkiBufLen, CRYPT_DECODE_ALLOC_FLAG, NULL, &pPubKeyInfo, &pPubKeyInfoLen);
+    if (!status) {
+        return FALSE;
+    }
+    *eccPubKeyBlob = HeapAlloc(GetProcessHeap(), 0, 96 + sizeof(BCRYPT_ECCKEY_BLOB));
+    if (!*eccPubKeyBlob) {
+        LocalFree(pPubKeyInfo);
+        return FALSE;
+    }
+    ((BCRYPT_ECCKEY_BLOB*)*eccPubKeyBlob)->dwMagic = BCRYPT_ECDH_PUBLIC_P384_MAGIC;
+    ((BCRYPT_ECCKEY_BLOB*)*eccPubKeyBlob)->cbKey = 48;
+    encodedPubKey = pPubKeyInfo->PublicKey.pbData;
+    memcpy(*eccPubKeyBlob + sizeof(BCRYPT_ECCKEY_BLOB), encodedPubKey + 1, 96);
+
+    LocalFree(pPubKeyInfo);
+    return TRUE;
+}
+
 int main(void) {
-    // HANDLE hFile;
-    // ULONG encodedRsaPrivateKeyLen;
-    ULONG encodedRsaPublicKeyLen, bytesRead, rsaPublicKeyBlobLen,
-        serverEcdhPublicKeyBlobLen, encodedServerEcdhPublicKeyLen, hashObjLen,
-        keyHashLen, signatureLen, clientEcdhPublicKeyBlobLen,
-        encodedClientEcdhPublicKeyLen, clientMasterSecretLen, serverMasterSecretLen,
-        ciphertextLen, decryptedLen;
-    // PUCHAR encodedRsaPrivateKey;
-    PUCHAR encodedRsaPublicKey, rsaPublicKeyBlob, serverEcdhPublicKeyBlob,
-        encodedServerEcdhPublicKey, hashObj, keyHash, signature,
-        clientEcdhPublicKeyBlob, encodedClientEcdhPublicKey, clientMasterSecret,
-        aesKeyBytes, serverMasterSecret, ciphertext, decrypted;
+    HANDLE hFile;
+    DWORD encodedRsaPrivateKeyLen, pPrivKeyInfoLen, derBufLen;
+    // ULONG rsaPublicKeyBlobLen;
+    ULONG encodedRsaPublicKeyLen, bytesRead, serverEcdhPublicKeyBlobLen,
+        encodedServerEcdhPublicKeyLen, hashObjLen, keyHashLen, signatureLen,
+        decodedRsaPublicKeyBlobLen, decodedServerEcdhPublicKeyBlobLen,
+        clientEcdhPublicKeyBlobLen, encodedClientEcdhPublicKeyLen,
+        clientMasterSecretLen, decodedClientEcdhPublicKeyBlobLen,
+        serverMasterSecretLen, ciphertextLen, decryptedLen;
+    PUCHAR encodedRsaPrivateKey, derBuf = NULL;
+    // PUCHAR rsaPublicKeyBlob;
+    PUCHAR encodedRsaPublicKey, serverEcdhPublicKeyBlob, encodedServerEcdhPublicKey,
+        hashObj, keyHash, signature, decodedRsaPublicKeyBlob,
+        decodedServerEcdhPublicKeyBlob, clientEcdhPublicKeyBlob,
+        encodedClientEcdhPublicKey, clientMasterSecret, aesKeyBytes,
+        decodedClientEcdhPublicKeyBlob, serverMasterSecret,
+        ciphertext, decrypted;
+    PCRYPT_PRIVATE_KEY_INFO pPrivKeyInfo = NULL;
     BCRYPT_ALG_HANDLE rsa, ecdh, sha256, aes, rng;
     BCRYPT_KEY_HANDLE rsaPrivateKey, serverEcdhKeyPair, rsaPublicKey,
         decodedServerEcdhPublicKey, clientEcdhKeyPair, aesKey, decodedClientEcdhPublicKey;
@@ -31,28 +206,33 @@ int main(void) {
     // UCHAR ivCopy[12];
     BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO authInfo;
 
-    // hFile = CreateFileA("public_key.der", GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    // encodedRsaPublicKeyLen = GetFileSize(hFile, NULL);
-    // encodedRsaPublicKey = HeapAlloc(GetProcessHeap(), 0, encodedRsaPublicKeyLen);
-    // ReadFile(hFile, encodedRsaPublicKey, encodedRsaPublicKeyLen, &bytesRead, NULL);
-    // CloseHandle(hFile);
-    // hFile = CreateFileA("private_key.der", GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    // encodedRsaPrivateKeyLen = GetFileSize(hFile, NULL);
-    // encodedRsaPrivateKey = HeapAlloc(GetProcessHeap(), 0, encodedRsaPrivateKeyLen);
-    // ReadFile(hFile, encodedRsaPrivateKey, encodedRsaPrivateKeyLen, &bytesRead, NULL);
-    // CloseHandle(hFile);
-
-    // Generating our own RSA public/private key pair for now
     BCryptOpenAlgorithmProvider(&rsa, BCRYPT_RSA_ALGORITHM, NULL, 0);
-    BCryptGenerateKeyPair(rsa, &rsaPrivateKey, 2048, 0);
-    BCryptFinalizeKeyPair(rsaPrivateKey, 0);
-    BCryptExportKey(rsaPrivateKey, NULL, BCRYPT_RSAPUBLIC_BLOB, NULL, 0, &rsaPublicKeyBlobLen, 0);
-    rsaPublicKeyBlob = HeapAlloc(GetProcessHeap(), 0, rsaPublicKeyBlobLen);
-    BCryptExportKey(rsaPrivateKey, NULL, BCRYPT_RSAPUBLIC_BLOB, rsaPublicKeyBlob,
-        rsaPublicKeyBlobLen, &rsaPublicKeyBlobLen, 0);
-    // TODO: export rsaPublicKeyBlob in SPKI DER format (maybe 294 bytes?)
-    encodedRsaPublicKey = rsaPublicKeyBlob;
-    encodedRsaPublicKeyLen = rsaPublicKeyBlobLen; // currently 283
+    hFile = CreateFileA("public_key.der", GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    encodedRsaPublicKeyLen = GetFileSize(hFile, NULL);
+    encodedRsaPublicKey = HeapAlloc(GetProcessHeap(), 0, encodedRsaPublicKeyLen);
+    ReadFile(hFile, encodedRsaPublicKey, encodedRsaPublicKeyLen, &bytesRead, NULL);
+    CloseHandle(hFile);
+    hFile = CreateFileA("private_key.der", GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    encodedRsaPrivateKeyLen = GetFileSize(hFile, NULL);
+    encodedRsaPrivateKey = HeapAlloc(GetProcessHeap(), 0, encodedRsaPrivateKeyLen);
+    ReadFile(hFile, encodedRsaPrivateKey, encodedRsaPrivateKeyLen, &bytesRead, NULL);
+    CloseHandle(hFile);
+    CryptDecodeObjectEx(X509_ASN_ENCODING, PKCS_PRIVATE_KEY_INFO,
+        encodedRsaPrivateKey, encodedRsaPrivateKeyLen, CRYPT_DECODE_ALLOC_FLAG, NULL,
+        &pPrivKeyInfo, &pPrivKeyInfoLen);
+    CryptDecodeObjectEx(X509_ASN_ENCODING, CNG_RSA_PRIVATE_KEY_BLOB,
+        pPrivKeyInfo->PrivateKey.pbData, pPrivKeyInfo->PrivateKey.cbData,
+        CRYPT_DECODE_ALLOC_FLAG, NULL, &derBuf, &derBufLen);
+    BCryptImportKeyPair(rsa, NULL, BCRYPT_RSAPRIVATE_BLOB, &rsaPrivateKey, derBuf, derBufLen, 0);
+    LocalFree(pPrivKeyInfo);
+    LocalFree(derBuf);
+    // BCryptGenerateKeyPair(rsa, &rsaPrivateKey, 2048, 0);
+    // BCryptFinalizeKeyPair(rsaPrivateKey, 0);
+    // BCryptExportKey(rsaPrivateKey, NULL, BCRYPT_RSAPUBLIC_BLOB, NULL, 0, &rsaPublicKeyBlobLen, 0);
+    // rsaPublicKeyBlob = HeapAlloc(GetProcessHeap(), 0, rsaPublicKeyBlobLen);
+    // BCryptExportKey(rsaPrivateKey, NULL, BCRYPT_RSAPUBLIC_BLOB, rsaPublicKeyBlob,
+    //     rsaPublicKeyBlobLen, &rsaPublicKeyBlobLen, 0);
+    // ConvertRSABlobToSPKI(rsaPublicKeyBlob, &encodedRsaPublicKey, &encodedRsaPublicKeyLen);
 
     BCryptOpenAlgorithmProvider(&ecdh, BCRYPT_ECDH_P384_ALGORITHM, NULL, 0);
     BCryptGenerateKeyPair(ecdh, &serverEcdhKeyPair, 384, 0);
@@ -61,16 +241,14 @@ int main(void) {
     serverEcdhPublicKeyBlob = HeapAlloc(GetProcessHeap(), 0, serverEcdhPublicKeyBlobLen);
     BCryptExportKey(serverEcdhKeyPair, NULL, BCRYPT_ECCPUBLIC_BLOB, serverEcdhPublicKeyBlob,
         serverEcdhPublicKeyBlobLen, &serverEcdhPublicKeyBlobLen, 0);
-    // TODO: export serverEcdhPublicKeyBlob in SPKI DER format (should be 120 bytes)
-    encodedServerEcdhPublicKey = serverEcdhPublicKeyBlob;
-    encodedServerEcdhPublicKeyLen = serverEcdhPublicKeyBlobLen; // currently 104
+    ConvertECCBlobToSPKI(serverEcdhPublicKeyBlob, &encodedServerEcdhPublicKey, &encodedServerEcdhPublicKeyLen);
 
     BCryptOpenAlgorithmProvider(&sha256, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_HASH_REUSABLE_FLAG);
+    // Tried replacing {hashObj, hashObjLen} with {NULL, 0} but ran into issues
+    // Maybe has to do with reusing hash function for AES key?
     BCryptGetProperty(sha256, BCRYPT_OBJECT_LENGTH, (PBYTE)&hashObjLen, sizeof(ULONG), &bytesRead, 0);
     hashObj = HeapAlloc(GetProcessHeap(), 0, hashObjLen);
-    // BCryptHash(sha256, NULL, 0, encodedServerEcdhPublicKey,
-    //     encodedServerEcdhPublicKeyLen, keyHash, 256);
-    BCryptCreateHash(sha256, &hSha256, hashObj, hashObjLen, NULL, 0, BCRYPT_HASH_REUSABLE_FLAG);
+    BCryptCreateHash(sha256, &hSha256, NULL, 0, NULL, 0, BCRYPT_HASH_REUSABLE_FLAG);
     BCryptHashData(hSha256, encodedServerEcdhPublicKey, encodedServerEcdhPublicKeyLen, 0);
     BCryptGetProperty(sha256, BCRYPT_HASH_LENGTH, (PUCHAR)&keyHashLen, sizeof(ULONG), &bytesRead, 0);
     keyHash = HeapAlloc(GetProcessHeap(), 0, keyHashLen);
@@ -80,9 +258,10 @@ int main(void) {
     BCryptSignHash(rsaPrivateKey, &paddingInfo, keyHash, keyHashLen, signature,
         signatureLen, &signatureLen, BCRYPT_PAD_PSS);
 
-    // TODO: will need to import RSA public key from SPKI DER into BLOB format
+    ConvertRSASPKIToBlob(encodedRsaPublicKey, encodedRsaPublicKeyLen, &decodedRsaPublicKeyBlob,
+        &decodedRsaPublicKeyBlobLen);
     BCryptImportKeyPair(rsa, NULL, BCRYPT_RSAPUBLIC_BLOB, &rsaPublicKey,
-        encodedRsaPublicKey, encodedRsaPublicKeyLen, 0);
+        decodedRsaPublicKeyBlob, decodedRsaPublicKeyBlobLen, 0);
     status = BCryptVerifySignature(rsaPublicKey, &paddingInfo, keyHash, keyHashLen,
         signature, signatureLen, BCRYPT_PAD_PSS);
     if (!NT_SUCCESS(status)) {
@@ -90,19 +269,22 @@ int main(void) {
         exit(1);
     }
 
-    // No built-in constant-time buffer comparison algorithms
-    // TODO: will need to import server ECDH public key from SPKI DER into BLOB format
+    /*
+     * No built-in constant-time buffer comparison algorithm to compare server's
+     * hash with client's hash of server's ECDH public key. Need to implement
+     * your own.
+     */
+    ConvertECCSPKIToBlob(encodedServerEcdhPublicKey, encodedServerEcdhPublicKeyLen,
+        &decodedServerEcdhPublicKeyBlob, &decodedServerEcdhPublicKeyBlobLen);
     BCryptImportKeyPair(ecdh, NULL, BCRYPT_ECCPUBLIC_BLOB, &decodedServerEcdhPublicKey,
-        encodedServerEcdhPublicKey, encodedServerEcdhPublicKeyLen, 0);
+        decodedServerEcdhPublicKeyBlob, decodedServerEcdhPublicKeyBlobLen, 0);
     BCryptGenerateKeyPair(ecdh, &clientEcdhKeyPair, 384, 0);
     BCryptFinalizeKeyPair(clientEcdhKeyPair, 0);
     BCryptExportKey(clientEcdhKeyPair, NULL, BCRYPT_ECCPUBLIC_BLOB, NULL, 0, &clientEcdhPublicKeyBlobLen, 0);
     clientEcdhPublicKeyBlob = HeapAlloc(GetProcessHeap(), 0, clientEcdhPublicKeyBlobLen);
     BCryptExportKey(clientEcdhKeyPair, NULL, BCRYPT_ECCPUBLIC_BLOB, clientEcdhPublicKeyBlob,
         clientEcdhPublicKeyBlobLen, &clientEcdhPublicKeyBlobLen, 0);
-    // TODO: export clientEcdhPublicKeyBlob in SPKI DER format (should be 120 bytes)
-    encodedClientEcdhPublicKey = clientEcdhPublicKeyBlob;
-    encodedClientEcdhPublicKeyLen = clientEcdhPublicKeyBlobLen;
+    ConvertECCBlobToSPKI(clientEcdhPublicKeyBlob, &encodedClientEcdhPublicKey, &encodedClientEcdhPublicKeyLen);
     BCryptSecretAgreement(clientEcdhKeyPair, decodedServerEcdhPublicKey, &clientSecret, 0);
     BCryptDeriveKey(clientSecret, BCRYPT_KDF_RAW_SECRET, NULL, NULL, 0, &clientMasterSecretLen, 0);
     clientMasterSecret = HeapAlloc(GetProcessHeap(), 0, clientMasterSecretLen);
@@ -115,9 +297,10 @@ int main(void) {
     BCryptSetProperty(aes, BCRYPT_CHAINING_MODE, (PUCHAR)BCRYPT_CHAIN_MODE_GCM, sizeof(BCRYPT_CHAIN_MODE_GCM), 0);
     BCryptGenerateSymmetricKey(aes, &aesKey, NULL, 0, aesKeyBytes, keyHashLen, 0);
 
-    // TODO: will need to import client ECDH public key from SPKI DER into BLOB format
+    ConvertECCSPKIToBlob(encodedClientEcdhPublicKey, encodedClientEcdhPublicKeyLen,
+        &decodedClientEcdhPublicKeyBlob, &decodedClientEcdhPublicKeyBlobLen);
     BCryptImportKeyPair(ecdh, NULL, BCRYPT_ECCPUBLIC_BLOB, &decodedClientEcdhPublicKey,
-        encodedClientEcdhPublicKey, encodedClientEcdhPublicKeyLen, 0);
+        decodedClientEcdhPublicKeyBlob, decodedClientEcdhPublicKeyBlobLen, 0);
     BCryptSecretAgreement(serverEcdhKeyPair, decodedClientEcdhPublicKey, &serverSecret, 0);
     BCryptDeriveKey(serverSecret, BCRYPT_KDF_RAW_SECRET, NULL, NULL, 0, &serverMasterSecretLen, 0);
     serverMasterSecret = HeapAlloc(GetProcessHeap(), 0, serverMasterSecretLen);
@@ -172,16 +355,19 @@ int main(void) {
     BCryptDestroyHash(hSha256);
     BCryptDestroySecret(clientSecret);
     BCryptDestroySecret(serverSecret);
-    // HeapFree(GetProcessHeap(), 0, encodedRsaPublicKey);
-    // HeapFree(GetProcessHeap(), 0, encodedRsaPrivateKey);
-    HeapFree(GetProcessHeap(), 0, rsaPublicKeyBlob);
+    HeapFree(GetProcessHeap(), 0, encodedRsaPublicKey);
+    HeapFree(GetProcessHeap(), 0, encodedRsaPrivateKey);
+    // HeapFree(GetProcessHeap(), 0, rsaPublicKeyBlob);
     HeapFree(GetProcessHeap(), 0, serverEcdhPublicKeyBlob);
-    // HeapFree(GetProcessHeap(), 0, encodedServerEcdhPublicKey);
+    HeapFree(GetProcessHeap(), 0, encodedServerEcdhPublicKey);
     HeapFree(GetProcessHeap(), 0, hashObj);
     HeapFree(GetProcessHeap(), 0, keyHash);
     HeapFree(GetProcessHeap(), 0, signature);
+    HeapFree(GetProcessHeap(), 0, decodedRsaPublicKeyBlob);
+    HeapFree(GetProcessHeap(), 0, decodedServerEcdhPublicKeyBlob);
     HeapFree(GetProcessHeap(), 0, clientEcdhPublicKeyBlob);
-    // HeapFree(GetProcessHeap(), 0, encodedClientEcdhPublicKey);
+    HeapFree(GetProcessHeap(), 0, encodedClientEcdhPublicKey);
+    HeapFree(GetProcessHeap(), 0, decodedClientEcdhPublicKeyBlob);
     HeapFree(GetProcessHeap(), 0, clientMasterSecret);
     HeapFree(GetProcessHeap(), 0, aesKeyBytes);
     HeapFree(GetProcessHeap(), 0, serverMasterSecret);
