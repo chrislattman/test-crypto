@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"log"
 	"os"
@@ -31,9 +32,10 @@ func main() {
 	serverEcdhPrivateKey, _ := ecdh.P384().GenerateKey(rng)
 	encodedServerEcdhPublicKey, _ := x509.MarshalPKIXPublicKey(serverEcdhPrivateKey.PublicKey())
 
-	keyHash := sha256.Sum256(encodedServerEcdhPublicKey)
+	// Go requires the key to be hashed manually before signing it
+	keyHash := sha512.Sum384(encodedServerEcdhPublicKey)
 	opts := rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthAuto}
-	signature, _ := rsa.SignPSS(rng, rsaPrivateKey, crypto.SHA256, keyHash[:], &opts)
+	signature, _ := rsa.SignPSS(rng, rsaPrivateKey, crypto.SHA384, keyHash[:], &opts)
 
 	var decodedRsaPublicKey *rsa.PublicKey
 	key, _ = x509.ParsePKIXPublicKey(encodedRsaPublicKey)
@@ -43,7 +45,7 @@ func main() {
 	default:
 		log.Fatalln("Error parsing encodedRsaPublicKey")
 	}
-	err := rsa.VerifyPSS(decodedRsaPublicKey, crypto.SHA256, keyHash[:], signature, &opts)
+	err := rsa.VerifyPSS(decodedRsaPublicKey, crypto.SHA384, keyHash[:], signature, &opts)
 	if err != nil {
 		log.Fatalln("RSA signature wasn't verified.")
 	}

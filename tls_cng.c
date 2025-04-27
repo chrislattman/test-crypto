@@ -167,8 +167,8 @@ BOOL ConvertRSASPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *rsaPubKeyBlo
 }
 
 /**
- * Converts an ECC public key BLOB to an uncompressed EC point and then to SPKI
- * DER format, which can be used in a X.509 certificate.
+ * Converts an ECC public key BLOB to X9.63 DER format and then to SPKI DER
+ * format, which can be used in a X.509 certificate.
  */
 BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufLen) {
     PUCHAR x, y, spkiOutBuf = NULL;
@@ -253,8 +253,8 @@ BOOL ConvertECCBlobToSPKI(PUCHAR eccPubKeyBlob, PUCHAR *spkiBuf, ULONG *spkiBufL
 }
 
 /**
- * Converts an ECC public key in SPKI DER format to an uncompressed EC point and
- * then to the BLOB format, which can be used by `BCryptImportKeyPair`.
+ * Converts an ECC public key in SPKI DER format to X9.63 DER format and then to
+ * the BLOB format, which can be used by `BCryptImportKeyPair`.
  */
 BOOL ConvertECCSPKIToBlob(PUCHAR spkiBuf, ULONG spkiBufLen, PUCHAR *eccPubKeyBlob,
         ULONG *eccPubKeyBlobLen) {

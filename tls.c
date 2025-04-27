@@ -12,7 +12,7 @@ int main(void)
     struct stat statbuf = {0};
     FILE *fp;
     unsigned char *encoded_rsa_public_key, *encoded_rsa_private_key,
-        *encoded_server_ecdh_public_key, *ptr, *key_hash, *signature,
+        *encoded_server_ecdh_public_key, *ptr, *signature,
         *encoded_client_ecdh_public_key, *client_master_secret,
         *server_master_secret, *aes_key, iv[12], *ciphertext, tag[16], *decrypted;
     int encoded_rsa_public_key_len, encoded_rsa_private_key_len,
@@ -27,8 +27,8 @@ int main(void)
         *rsa_private_key_ctx = NULL, *encoded_rsa_public_key_ctx = NULL,
         *client_ecdh_param_context, *client_ecdh_key_context,
         *client_master_secret_context, *server_master_secret_context;
-    EVP_MD_CTX *sha256_context, *sign_context, *verify_context;
-    unsigned int key_hash_len, aes_key_len;
+    EVP_MD_CTX *sign_context, *verify_context, *sha256_context;
+    unsigned int aes_key_len;
     size_t signature_len, client_master_secret_len, server_master_secret_len;
     const char *plaintext = "Hello world!", *aad = "authenticated but unencrypted data";
     EVP_CIPHER_CTX *aes_gcm_encrypt_context, *aes_gcm_decrypt_context;
@@ -61,18 +61,12 @@ int main(void)
     ptr = encoded_server_ecdh_public_key;
     i2d_PUBKEY(server_ecdh_keypair, &ptr);
 
-    sha256_context = EVP_MD_CTX_new();
-    EVP_DigestInit_ex(sha256_context, EVP_sha256(), NULL);
-    EVP_DigestUpdate(sha256_context, encoded_server_ecdh_public_key,
-        encoded_server_ecdh_public_key_len);
-    key_hash_len = EVP_MD_get_size(EVP_sha256());
-    key_hash = malloc(key_hash_len);
-    EVP_DigestFinal_ex(sha256_context, key_hash, &key_hash_len);
     sign_context = EVP_MD_CTX_new();
-    EVP_DigestSignInit(sign_context, &rsa_private_key_ctx, EVP_sha256(), NULL, rsa_private_key);
+    EVP_DigestSignInit(sign_context, &rsa_private_key_ctx, EVP_sha384(), NULL, rsa_private_key);
     EVP_PKEY_CTX_set_rsa_padding(rsa_private_key_ctx, RSA_PKCS1_PSS_PADDING);
     EVP_PKEY_CTX_set_rsa_pss_saltlen(rsa_private_key_ctx, -2);
-    EVP_DigestSignUpdate(sign_context, key_hash, key_hash_len);
+    EVP_DigestSignUpdate(sign_context, encoded_server_ecdh_public_key,
+        encoded_server_ecdh_public_key_len);
     EVP_DigestSignFinal(sign_context, NULL, &signature_len);
     signature = malloc(signature_len);
     EVP_DigestSignFinal(sign_context, signature, &signature_len);
@@ -80,11 +74,12 @@ int main(void)
     const_ptr = encoded_rsa_public_key;
     d2i_PUBKEY(&decoded_rsa_public_key, &const_ptr, encoded_rsa_public_key_len);
     verify_context = EVP_MD_CTX_new();
-    EVP_DigestVerifyInit(verify_context, &encoded_rsa_public_key_ctx, EVP_sha256(),
+    EVP_DigestVerifyInit(verify_context, &encoded_rsa_public_key_ctx, EVP_sha384(),
         NULL, decoded_rsa_public_key);
     EVP_PKEY_CTX_set_rsa_padding(encoded_rsa_public_key_ctx, RSA_PKCS1_PSS_PADDING);
     EVP_PKEY_CTX_set_rsa_pss_saltlen(encoded_rsa_public_key_ctx, -2);
-    EVP_DigestVerifyUpdate(verify_context, key_hash, key_hash_len);
+    EVP_DigestVerifyUpdate(verify_context, encoded_server_ecdh_public_key,
+        encoded_server_ecdh_public_key_len);
     verified = EVP_DigestVerifyFinal(verify_context, (const unsigned char *) signature, signature_len);
     if (!verified) {
         puts("RSA signature wasn't verified.");
@@ -113,7 +108,6 @@ int main(void)
     EVP_PKEY_derive(client_master_secret_context, NULL, &client_master_secret_len);
     client_master_secret = malloc(client_master_secret_len);
     EVP_PKEY_derive(client_master_secret_context, client_master_secret, &client_master_secret_len);
-    EVP_MD_CTX_free(sha256_context);
     sha256_context = EVP_MD_CTX_new();
     EVP_DigestInit_ex(sha256_context, EVP_sha256(), NULL);
     EVP_DigestUpdate(sha256_context, client_master_secret, client_master_secret_len);
@@ -183,7 +177,6 @@ int main(void)
     EVP_PKEY_free(decoded_rsa_public_key);
     free(signature);
     EVP_MD_CTX_free(sign_context);
-    free(key_hash);
     free(encoded_server_ecdh_public_key);
     EVP_PKEY_free(server_ecdh_keypair);
     EVP_PKEY_CTX_free(server_ecdh_key_context);

@@ -52,24 +52,23 @@ public class TLS
          * key is assumed to be known and trusted by both parties.
          *
          * Nonetheless, the server sends: its encoded ECDH public key (120 bytes
-         * long), the SHA-256 hash of the encoded ECDH public key (32 bytes
-         * long), the RSA signature of the hash (256 bytes long), and its
-         * encoded RSA public key (used to verify the signature) to the client
-         * (294 bytes long). This example chooses to sign with PSS instead of
-         * PKCS#1 v1.5 for better security.
+         * long), the RSA signature of its encoded RSA public key (384 bytes or
+         * 3072 bits, the length of the RSA modulus), and its encoded RSA public
+         * key (used to verify the signature) to the client (422 bytes long).
+         * This example chooses to sign with PSS instead of PKCS#1 v1.5 for
+         * better security. The server will also send hashes of these keys for
+         * integrity checking.
          *
          * Normally, the RSA public key is part of an X.509 certificate, which
          * itself is part of a chain of signed certificates, ultimately ending
-         * with a root certificate installed on the computer.
+         * with a root certificate installed on the client's computer.
          */
-        MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-        byte[] keyHash = sha256.digest(encodedServerEcdhPublicKey);
         Signature rsaSign = Signature.getInstance("RSASSA-PSS");
-        PSSParameterSpec pssSpec = new PSSParameterSpec("SHA-256",
-            "MGF1", MGF1ParameterSpec.SHA256, (2048 / 8) - (256 / 8) - 2, 1);
+        PSSParameterSpec pssSpec = new PSSParameterSpec("SHA-384",
+            "MGF1", MGF1ParameterSpec.SHA384, (3072 / 8) - (384 / 8) - 2, 1);
         rsaSign.setParameter(pssSpec);
         rsaSign.initSign(rsaPrivateKey);
-        rsaSign.update(keyHash);
+        rsaSign.update(encodedRsaPublicKey);
         byte[] signature = rsaSign.sign();
 
         /*
@@ -81,7 +80,7 @@ public class TLS
             .getInstance("RSA")
             .generatePublic(decodedRsaPublicKeySpec);
         rsaSign.initVerify(decodedRsaPublicKey);
-        rsaSign.update(keyHash);
+        rsaSign.update(encodedRsaPublicKey);
         if (!rsaSign.verify(signature)) {
             throw new Exception("RSA signature wasn't verified.");
         }
@@ -96,6 +95,10 @@ public class TLS
          * public key, and hashes that master secret with SHA-256 to generate a
          * 256-bit AES secret key. It then sends its encoded ECDH public key to
          * the server (also 120 bytes long).
+         *
+         * Note that a function like HKDF could be used for key stretching,
+         * especially in the event that new secret keys are desired for every
+         * message.
          */
         X509EncodedKeySpec decodedServerEcdhPublicKeySpec = new X509EncodedKeySpec(
             encodedServerEcdhPublicKey);
@@ -108,7 +111,7 @@ public class TLS
         agreement.init(clientEcdhKeyPair.getPrivate());
         agreement.doPhase(decodedServerEcdhPublicKey, true);
         byte[] clientMasterSecret = agreement.generateSecret();
-        sha256.reset();
+        MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] aesKeyBytes = sha256.digest(clientMasterSecret);
         SecretKeySpec aesKey = new SecretKeySpec(aesKeyBytes, "AES");
 
@@ -134,7 +137,7 @@ public class TLS
          * AES-256-GCM is used to encrypt a message. The ciphertext (should be
          * 28 bytes long, 12 bytes of data followed by 16 bytes for the tag),
          * initialization vector (IV, sometimes called a nonce), and additional
-         * associated data (AAD) is sent over.
+         * authenticated data (AAD) is sent over.
          *
          * GCM uses an unencrypted AAD to generate a tag after encryption, which
          * is appended to the ciphertext. The tag is validated during decryption

@@ -2,7 +2,7 @@ import os
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, padding, utils
+from cryptography.hazmat.primitives.asymmetric import ec, padding
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey, RSAPrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -18,16 +18,14 @@ encoded_server_ecdh_public_key = server_ecdh_private_key.public_key().public_byt
     serialization.PublicFormat.SubjectPublicKeyInfo,
 )
 
-sha256 = hashes.Hash(hashes.SHA256())
-sha256.update(encoded_server_ecdh_public_key)
-key_hash = sha256.finalize()
+rsa_padding = padding.PSS(
+    mgf=padding.MGF1(hashes.SHA384()),
+    salt_length=padding.PSS.MAX_LENGTH
+)
 signature = rsa_private_key.sign(
-    key_hash,
-    padding.PSS(
-        mgf=padding.MGF1(hashes.SHA256()),
-        salt_length=padding.PSS.MAX_LENGTH
-    ),
-    utils.Prehashed(hashes.SHA256())
+    encoded_server_ecdh_public_key,
+    rsa_padding,
+    hashes.SHA384()
 )
 
 decoded_rsa_public_key = serialization.load_der_public_key(encoded_rsa_public_key)
@@ -35,12 +33,9 @@ assert isinstance(decoded_rsa_public_key, RSAPublicKey)  # For typing purposes
 try:
     decoded_rsa_public_key.verify(
         signature,
-        key_hash,
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-        ),
-        utils.Prehashed(hashes.SHA256())
+        encoded_server_ecdh_public_key,
+        rsa_padding,
+        hashes.SHA384()
     )
 except InvalidSignature:
     raise Exception("RSA signature wasn't verified.")

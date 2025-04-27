@@ -22,4 +22,4 @@ rust:
 clean:
 	rm -rf tls target
 
-.PHONY: java python nodejs go c rust clean
+.PHONY: java python nodejs go c winc rust clean

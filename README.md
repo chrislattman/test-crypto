@@ -9,7 +9,7 @@ Note: these examples use a pre-generated RSA key pair used to sign the "server" 
 The key pair (sometimes just called the RSA "key") in PEM (text) format was generated with:
 
 ```
-openssl genrsa -out keypair.pem 2048
+openssl genrsa -out keypair.pem 3072
 ```
 
 The private key in PKCS#8 DER (binary) format was derived with:
