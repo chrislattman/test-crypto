@@ -1,12 +1,15 @@
 [package]
 name = "test-crypto"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "tls"
 path = "tls.rs"
 
 [dependencies]
-hex = "0.4.3"
-ring = "0.17.8"
+aes-gcm = "0.10.3"
+p384 = { version = "0.13.1", features = ["ecdh", "pkcs8"] }
+rand_core = "0.6.4"
+rsa = "0.9.8"
+sha2 = "0.10.9"

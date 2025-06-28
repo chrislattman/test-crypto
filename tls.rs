@@ -1,112 +1,83 @@
 use std::fs;
 
-use ring::{
-    aead, agreement, digest,
-    rand::{self, SecureRandom},
-    rsa, signature,
+use aes_gcm::{
+    Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit, Payload},
 };
+use p384::{PublicKey, ecdh::EphemeralSecret, pkcs8::EncodePublicKey};
+use rand_core::{OsRng, RngCore};
+use rsa::{
+    RsaPrivateKey, RsaPublicKey,
+    pkcs8::{DecodePrivateKey, DecodePublicKey, spki::SignatureBitStringEncoding},
+    pss::{BlindedSigningKey, Signature, VerifyingKey},
+    signature::{RandomizedSigner, Verifier},
+};
+use sha2::{Digest, Sha256, Sha384};
 
 fn main() {
     let encoded_rsa_public_key = fs::read("public_key.der").unwrap();
     let encoded_rsa_private_key = fs::read("private_key.der").unwrap();
-    let rsa_private_key = rsa::KeyPair::from_pkcs8(encoded_rsa_private_key.as_slice()).unwrap();
+    let rsa_private_key = RsaPrivateKey::from_pkcs8_der(&encoded_rsa_private_key).unwrap();
 
-    let rng = rand::SystemRandom::new();
-    let server_ecdh_private_key =
-        agreement::EphemeralPrivateKey::generate(&agreement::ECDH_P384, &rng).unwrap();
-    let server_ecdh_public_key = server_ecdh_private_key.compute_public_key().unwrap();
-    let server_ecdh_public_key_raw = server_ecdh_public_key.as_ref();
-    // hack to encode secp384r1 public key in DER SPKI format manually since
-    // ring doesn't support it yet :(
-    let mut encoded_server_ecdh_public_key =
-        hex::decode("3076301006072a8648ce3d020106052b81040022036200").unwrap();
-    encoded_server_ecdh_public_key.extend_from_slice(server_ecdh_public_key_raw);
+    let server_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
+    let encoded_server_ecdh_public_key = PublicKey::from(&server_ecdh_private_key)
+        .to_public_key_der()
+        .unwrap()
+        .to_vec();
 
-    let mut signature = vec![0; rsa_private_key.public().modulus_len()];
-    rsa_private_key
-        .sign(
-            &signature::RSA_PSS_SHA384,
-            &rng,
-            encoded_server_ecdh_public_key.as_slice(),
-            &mut signature,
-        )
-        .unwrap();
+    let rsa_sign = BlindedSigningKey::<Sha384>::new(rsa_private_key);
+    let sig = rsa_sign.sign_with_rng(&mut OsRng, &encoded_server_ecdh_public_key);
+    let sig_bitstring = sig.to_bitstring().unwrap();
+    let sig_bytes = sig_bitstring.raw_bytes();
 
-    let decoded_rsa_public_key = signature::UnparsedPublicKey::new(
-        &signature::RSA_PSS_2048_8192_SHA384,
-        &encoded_rsa_public_key.as_slice()[24..], // removing the encoding manually
-    );
-    decoded_rsa_public_key
-        .verify(
-            encoded_server_ecdh_public_key.as_slice(),
-            signature.as_slice(),
-        )
+    let decoded_rsa_public_key =
+        RsaPublicKey::from_public_key_der(&encoded_rsa_public_key).unwrap();
+    let rsa_verify = VerifyingKey::<Sha384>::new(decoded_rsa_public_key);
+    let recovered_sig = Signature::try_from(sig_bytes).unwrap();
+    rsa_verify
+        .verify(&encoded_server_ecdh_public_key, &recovered_sig)
         .unwrap_or_else(|_| {
             panic!("RSA signature wasn't verified.");
         });
 
-    // client should import ring::constant_time and use
-    // constant_time::verify_slices_are_equal() to compare server's hash with
-    // its own hash of the server's encoded ECDH public key to avoid timing
-    // attacks
-    let decoded_server_ecdh_public_key = agreement::UnparsedPublicKey::new(
-        &agreement::ECDH_P384,
-        &encoded_server_ecdh_public_key.as_slice()[23..],
-    ); // removing the encoding manually
-    let client_ecdh_private_key =
-        agreement::EphemeralPrivateKey::generate(&agreement::ECDH_P384, &rng).unwrap();
-    let client_ecdh_public_key = client_ecdh_private_key.compute_public_key().unwrap();
-    let client_ecdh_public_key_raw = client_ecdh_public_key.as_ref();
-    // manual public key encoding again
-    let mut encoded_client_ecdh_public_key =
-        hex::decode("3076301006072a8648ce3d020106052b81040022036200").unwrap();
-    encoded_client_ecdh_public_key.extend_from_slice(client_ecdh_public_key_raw);
-    let aes_key = agreement::agree_ephemeral(
-        client_ecdh_private_key,
-        &decoded_server_ecdh_public_key,
-        |client_master_secret| {
-            // perform SHA-256 hash of the master secret in here
-            return digest::digest(&digest::SHA256, client_master_secret)
-                .as_ref()
-                .to_vec();
-        },
-    )
-    .unwrap();
+    let decoded_server_ecdh_public_key =
+        PublicKey::from_public_key_der(&encoded_server_ecdh_public_key).unwrap();
+    let client_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
+    let encoded_client_ecdh_public_key = PublicKey::from(&client_ecdh_private_key)
+        .to_public_key_der()
+        .unwrap()
+        .to_vec();
+    let client_exchange = client_ecdh_private_key.diffie_hellman(&decoded_server_ecdh_public_key);
+    let client_master_secret = client_exchange.raw_secret_bytes();
+    let hash = Sha256::digest(client_master_secret);
+    let aes_key = Key::<Aes256Gcm>::from_slice(&hash);
 
-    let decoded_client_ecdh_public_key = agreement::UnparsedPublicKey::new(
-        &agreement::ECDH_P384,
-        &encoded_client_ecdh_public_key.as_slice()[23..],
-    ); // removing the encoding manually
-    let server_aes_key = agreement::agree_ephemeral(
-        server_ecdh_private_key,
-        &decoded_client_ecdh_public_key,
-        |server_master_secret| {
-            // perform SHA-256 hash of the master secret in here
-            return digest::digest(&digest::SHA256, server_master_secret)
-                .as_ref()
-                .to_vec();
-        },
-    )
-    .unwrap();
-    if aes_key != server_aes_key {
+    let decoded_client_ecdh_public_key =
+        PublicKey::from_public_key_der(&encoded_client_ecdh_public_key).unwrap();
+    let server_exchange = server_ecdh_private_key.diffie_hellman(&decoded_client_ecdh_public_key);
+    let server_master_secret = server_exchange.raw_secret_bytes();
+    if client_master_secret != server_master_secret {
         panic!("Master secrets don't match.");
     }
 
     let plaintext = "Hello world!";
-    let mut ciphertext = plaintext.as_bytes().to_vec();
-    let aad_bytes = b"authenticated but unencrypted data";
-    let mut iv_bytes = [08; 12];
-    rng.fill(&mut iv_bytes).unwrap();
-    let iv = aead::Nonce::assume_unique_for_key(iv_bytes);
-    let aad = aead::Aad::from(aad_bytes);
-    let unbound_key = aead::UnboundKey::new(&aead::AES_256_GCM, aes_key.as_slice()).unwrap();
-    let aes = aead::LessSafeKey::new(unbound_key);
-    aes.seal_in_place_append_tag(iv, aad, &mut ciphertext)
-        .unwrap();
+    let aad = b"authenticated but unencrypted data";
+    let mut iv = [0u8; 12]; // You will store this
+    OsRng.fill_bytes(&mut iv);
+    let nonce = Nonce::from_slice(&iv);
+    let cipher = Aes256Gcm::new(aes_key);
+    let payload = Payload {
+        msg: plaintext.as_bytes(),
+        aad,
+    };
+    let ciphertext = cipher.encrypt(nonce, payload).unwrap();
 
-    let iv_copy = aead::Nonce::assume_unique_for_key(iv_bytes);
-    let decrypted = aes.open_in_place(iv_copy, aad, &mut ciphertext).unwrap();
-    let recovered = std::str::from_utf8(decrypted).unwrap();
+    let payload = Payload {
+        msg: &ciphertext,
+        aad,
+    };
+    let decrypted = cipher.decrypt(nonce, payload).unwrap();
+    let recovered = str::from_utf8(&decrypted).unwrap();
     if plaintext != recovered {
         panic!("Plaintexts don't match.");
     }

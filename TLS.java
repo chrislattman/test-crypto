@@ -40,8 +40,8 @@ public class TLS
          *
          * Note: you could also use DH (RSA is obsolete for key agreement)
          */
-        KeyPairGenerator keyPairGen = KeyPairGenerator.getInstance("EC");
         SecureRandom random = SecureRandom.getInstanceStrong();
+        KeyPairGenerator keyPairGen = KeyPairGenerator.getInstance("EC");
         ECGenParameterSpec ecGen = new ECGenParameterSpec("secp384r1");
         keyPairGen.initialize(ecGen, random);
         KeyPair serverEcdhKeyPair = keyPairGen.generateKeyPair();
@@ -52,8 +52,8 @@ public class TLS
          * key is assumed to be known and trusted by both parties.
          *
          * Nonetheless, the server sends: its encoded ECDH public key (120 bytes
-         * long), the RSA signature of its encoded RSA public key (384 bytes or
-         * 3072 bits, the length of the RSA modulus), and its encoded RSA public
+         * long), the RSA signature of its encoded ECDH public key (384 bytes,
+         * the length of the SHA-384 hash from PSS), and its encoded RSA public
          * key (used to verify the signature) to the client (422 bytes long).
          * This example chooses to sign with PSS instead of PKCS#1 v1.5 for
          * better security. The server will also send hashes of these keys for
@@ -68,37 +68,44 @@ public class TLS
             "MGF1", MGF1ParameterSpec.SHA384, (3072 / 8) - (384 / 8) - 2, 1);
         rsaSign.setParameter(pssSpec);
         rsaSign.initSign(rsaPrivateKey);
-        rsaSign.update(encodedRsaPublicKey);
+        rsaSign.update(encodedServerEcdhPublicKey);
         byte[] signature = rsaSign.sign();
 
         /*
-         * The client then attempts to verify the signature of the hash using
-         * the server's decoded RSA public key.
+         * The client then attempts to verify the signature using the server's
+         * decoded RSA public key.
          */
         X509EncodedKeySpec decodedRsaPublicKeySpec = new X509EncodedKeySpec(encodedRsaPublicKey);
         PublicKey decodedRsaPublicKey = KeyFactory
             .getInstance("RSA")
             .generatePublic(decodedRsaPublicKeySpec);
         rsaSign.initVerify(decodedRsaPublicKey);
-        rsaSign.update(encodedRsaPublicKey);
+        rsaSign.update(encodedServerEcdhPublicKey);
         if (!rsaSign.verify(signature)) {
             throw new Exception("RSA signature wasn't verified.");
         }
 
         /*
-         * If the signature is verified, the client checks that the hash of the
-         * server's encoded ECDH public key is correct (use
-         * MessageDigest.isEqual() to avoid timing attacks). If so, the client
-         * decodes the server's ECDH public key, generates its own ECDH keypair,
-         * then generates the master secret (sometimes called premaster secret
-         * or shared secret) using its ECDH private key and the server's ECDH
-         * public key, and hashes that master secret with SHA-256 to generate a
-         * 256-bit AES secret key. It then sends its encoded ECDH public key to
-         * the server (also 120 bytes long).
+         * If the signature is verified, the client decodes the server's ECDH
+         * public key, generates its own ECDH keypair, then generates the master
+         * secret (sometimes called premaster secret or shared secret) using its
+         * ECDH private key and the server's ECDH public key, and hashes that
+         * master secret with SHA-256 to generate a 256-bit AES secret key. It
+         * then sends its encoded ECDH public key to the server (also 120 bytes
+         * long).
          *
          * Note that a function like HKDF could be used for key stretching,
          * especially in the event that new secret keys are desired for every
          * message.
+         *
+         * It may seem insecure that the client is sending the server its ECDH
+         * public key without signing it. This is a natural consequence of only
+         * the server having a certificate associated with it, and is acceptable
+         * since at the end of a real-world handshake, the client and server
+         * send each other a hash of the entire handshake data with a MAC to
+         * ensure that no MITM attack occured.
+         *
+         * If comparing two hashes, use MessageDigest.isEqual().
          */
         X509EncodedKeySpec decodedServerEcdhPublicKeySpec = new X509EncodedKeySpec(
             encodedServerEcdhPublicKey);
