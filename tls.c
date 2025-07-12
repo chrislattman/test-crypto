@@ -133,7 +133,7 @@ int main(void)
     aes_gcm_encrypt_context = EVP_CIPHER_CTX_new();
     EVP_EncryptInit_ex(aes_gcm_encrypt_context, EVP_aes_256_gcm(), NULL, aes_key, iv);
     EVP_EncryptUpdate(aes_gcm_encrypt_context, NULL, &len, (const unsigned char *) aad, strlen(aad));
-    ciphertext = malloc(64);
+    ciphertext = malloc(strlen(plaintext));
     EVP_EncryptUpdate(aes_gcm_encrypt_context, ciphertext, &len,
         (const unsigned char *) plaintext, strlen(plaintext));
     ciphertext_len = len;
@@ -144,7 +144,7 @@ int main(void)
     aes_gcm_decrypt_context = EVP_CIPHER_CTX_new();
     EVP_DecryptInit_ex(aes_gcm_decrypt_context, EVP_aes_256_gcm(), NULL, aes_key, iv);
     EVP_DecryptUpdate(aes_gcm_decrypt_context, NULL, &len, (const unsigned char *) aad, strlen(aad));
-    decrypted = malloc(64);
+    decrypted = malloc(strlen(plaintext));
     EVP_DecryptUpdate(aes_gcm_decrypt_context, decrypted, &len, ciphertext, ciphertext_len);
     decrypted_len = len;
     EVP_CIPHER_CTX_ctrl(aes_gcm_decrypt_context, EVP_CTRL_GCM_SET_TAG, 16, tag);

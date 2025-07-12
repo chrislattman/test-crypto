@@ -77,7 +77,7 @@ fn main() {
         aad,
     };
     let decrypted = cipher.decrypt(nonce, payload).unwrap();
-    let recovered = str::from_utf8(&decrypted).unwrap();
+    let recovered = std::str::from_utf8(&decrypted).unwrap();
     if plaintext != recovered {
         panic!("Plaintexts don't match.");
     }
