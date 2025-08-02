@@ -40,6 +40,9 @@ fn main() {
             panic!("RSA signature wasn't verified.");
         });
 
+    // client should import "use subtle::ConstantTimeEq;" and use
+    // bool::from(hash.ct_eq(&other_hash)) to compare server's hash with its own
+    // hash of the server's encoded ECDH public key to avoid timing attacks
     let decoded_server_ecdh_public_key =
         PublicKey::from_public_key_der(&encoded_server_ecdh_public_key).unwrap();
     let client_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
