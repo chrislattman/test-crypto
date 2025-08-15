@@ -5,7 +5,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
 };
 use p384::{PublicKey, ecdh::EphemeralSecret, pkcs8::EncodePublicKey};
-use rand_core::{OsRng, RngCore};
+use rand::{rngs::OsRng, RngCore};
 use rsa::{
     RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey, spki::SignatureBitStringEncoding},
@@ -66,7 +66,7 @@ fn main() {
     let plaintext = "Hello world!";
     let aad = b"authenticated but unencrypted data";
     let mut iv = [0u8; 12]; // You will store this
-    OsRng.fill_bytes(&mut iv);
+    OsRng.try_fill_bytes(&mut iv).unwrap();
     let nonce = Nonce::from_slice(&iv);
     let cipher = Aes256Gcm::new(aes_key);
     let payload = Payload {

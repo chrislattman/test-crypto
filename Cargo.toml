@@ -10,6 +10,6 @@ path = "tls.rs"
 [dependencies]
 aes-gcm = "0.10.3"
 p384 = { version = "0.13.1", features = ["ecdh", "pkcs8"] }
-rand_core = "0.6.4"
+rand = "0.8.5" # specifically using older version due to issue with rsa crate
 rsa = "0.9.8"
 sha2 = "0.10.9"
