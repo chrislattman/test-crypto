@@ -26,8 +26,10 @@ openssl rsa -pubout -inform PEM -in keypair.pem -outform DER -out public_key.der
 
 These commands use OpenSSL. Popular TLS libraries for embedded platforms are wolfSSL and Mbed TLS.
 
-> Note: C# offers a cryptography interface, but it's not fully cross-platform, as it requires either using the Cryptography API: Next Generation (CNG) library (bcrypt.dll) on Windows, or OpenSSL for non-Windows platforms.
+> C# offers a cryptography interface, but it's not fully cross-platform, as it requires either using the Cryptography API: Next Generation (CNG) library (bcrypt.dll) on Windows, or OpenSSL for non-Windows platforms.
 
 > Windows CNG stores cryptographic public/private key pairs as blobs, which aren't compatible with OpenSSL-generated key pairs. This is something to consider when importing private keys or exporting public keys.
 
 > The major operating systems use different sources of entropy to generate cryptographically secure pseudorandom numbers. Linux uses `genrandom()` which polls from `/dev/urandom`, macOS uses `arc4random_buf()`, and Windows uses `BCryptGenRandom()`.
+
+> For Swift, Apple CryptoKit (Swift Crypto on Linux and Windows) uses corecrypto on macOS, which is a C library but isn't exposed via headers. On other platforms, Swift Crypto uses BoringSSL. However, CommonCrypto, also built on top of corecrypto, is still usable as a C library on macOS, but only older symmetric cryptography is supported (e.g. no AES-256-GCM support). Security.framework, again built on top of corecrypto, exposes several asymmetric cryptographic algorithms in C, but is not being updated for modern post-quantum algorithms (unlike corecrypto/Apple CryptoKit).
