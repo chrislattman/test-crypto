@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
@@ -128,6 +129,8 @@ int main(void)
         puts("Master secrets don't match.");
         exit(1);
     }
+    OPENSSL_cleanse(client_master_secret, client_master_secret_len);
+    OPENSSL_cleanse(server_master_secret, server_master_secret_len);
 
     RAND_bytes(iv, 12);
     aes_gcm_encrypt_context = EVP_CIPHER_CTX_new();
@@ -155,6 +158,9 @@ int main(void)
         puts("Plaintexts don't match.");
         exit(1);
     }
+
+    // server_ecdh_keypair and client_ecdh_keypair get destroyed below
+    OPENSSL_cleanse(aes_key, aes_key_len);
 
     free(decrypted);
     EVP_CIPHER_CTX_free(aes_gcm_decrypt_context);

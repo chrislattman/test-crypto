@@ -46,16 +46,17 @@ const encodedClientEcdhPublicKey = Buffer.concat(
     newLength,
 );
 const clientMasterSecret = clientEcdh.computeSecret(decodedServerEcdhPublicKey);
-sha256 = crypto.createHash("sha256");
+const sha256 = crypto.createHash("sha256");
 sha256.update(clientMasterSecret);
-const aesKeyBytes = sha256.digest();
-const aesKey = crypto.createSecretKey(aesKeyBytes);
+const aesKey = crypto.createSecretKey(sha256.digest());
 
 const decodedClientEcdhPublicKey = encodedClientEcdhPublicKey.subarray(prefix.length);
 const serverMasterSecret = serverEcdh.computeSecret(decodedClientEcdhPublicKey);
 if (!clientMasterSecret.equals(serverMasterSecret)) {
     throw new Error("Master secrets don't match.");
 }
+clientMasterSecret.fill(0);
+serverMasterSecret.fill(0);
 
 const plaintext = "Hello world!";
 const aad = Buffer.from("authenticated but unencrypted data");
@@ -76,3 +77,5 @@ const recovered = decrypted.toString();
 if (plaintext !== recovered) {
     throw new Error("Plaintexts don't match.");
 }
+
+// Neither crypto.ECDH nor crypto.KeyObject currently have a manual destructor

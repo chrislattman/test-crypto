@@ -13,3 +13,4 @@ p384 = { version = "0.13.1", features = ["ecdh", "pkcs8"] }
 rand = "0.8.5" # specifically using older version due to issue with rsa crate
 rsa = "0.9.8"
 sha2 = "0.10.9"
+zeroize = "1.8.2"

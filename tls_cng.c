@@ -429,6 +429,8 @@ int main(void) {
         puts("Master secrets don't match.");
         exit(1);
     }
+    SecureZeroMemory(client_master_secret, clientMasterSecretLen);
+    SecureZeroMemory(server_master_secret, serverMasterSecretLen);
 
     BCryptOpenAlgorithmProvider(&rng, BCRYPT_RNG_ALGORITHM, NULL, 0);
     BCryptGenRandom(rng, iv, sizeof(iv), 0);
@@ -457,6 +459,9 @@ int main(void) {
         puts("Plaintexts don't match.");
         exit(1);
     }
+
+    // serverEcdhKeyPair and clientEcdhKeyPair get destroyed below
+    SecureZeroMemory(aesKeyBytes, keyHashLen);
 
     BCryptCloseAlgorithmProvider(rsa, 0);
     BCryptCloseAlgorithmProvider(ecdh, 0);

@@ -117,10 +117,9 @@ public class TLS
         KeyAgreement agreement = KeyAgreement.getInstance("ECDH");
         agreement.init(clientEcdhKeyPair.getPrivate());
         agreement.doPhase(decodedServerEcdhPublicKey, true);
-        byte[] clientMasterSecret = agreement.generateSecret();
+        byte[] clientMasterSecret = agreement.generateSecret(); // only on its own line for comparison purposes
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-        byte[] aesKeyBytes = sha256.digest(clientMasterSecret);
-        SecretKeySpec aesKey = new SecretKeySpec(aesKeyBytes, "AES");
+        SecretKeySpec aesKey = new SecretKeySpec(sha256.digest(clientMasterSecret), "AES");
 
         /*
          * The server decodes the client's ECDH public key and generates the
@@ -135,7 +134,7 @@ public class TLS
             .generatePublic(decodedClientEcdhPublicKeySpec);
         agreement.init(serverEcdhKeyPair.getPrivate());
         agreement.doPhase(decodedClientEcdhPublicKey, true);
-        byte[] serverMasterSecret = agreement.generateSecret();
+        byte[] serverMasterSecret = agreement.generateSecret(); // only on its own line for comparison purposes
         if (!Arrays.equals(clientMasterSecret, serverMasterSecret)) {
             throw new Exception("Master secrets don't match.");
         }
@@ -177,5 +176,16 @@ public class TLS
         if (!plaintext.equals(recovered)) {
             throw new Exception("Plaintexts don't match.");
         }
+
+        /*
+         * Destroying private data by performing zeroization. This is done as a
+         * safeguard, since the runtime may not deallocate this memory
+         * immediately after the function exits (important for a longstanding
+         * application). Currently fails because neither underlying class
+         * meaningfully implements the method.
+         */
+        // serverEcdhKeyPair.getPrivate().destroy();
+        // clientEcdhKeyPair.getPrivate().destroy();
+        // aesKey.destroy();
     }
 }

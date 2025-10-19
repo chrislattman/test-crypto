@@ -71,3 +71,5 @@ decrypted = cipher.decrypt(iv, ciphertext, aad)
 recovered = decrypted.decode()
 if plaintext != recovered:
     raise Exception("Plaintexts don't match.")
+
+# EllipticCurvePrivateKey has no manual destructor and Python bytes objects are immutable

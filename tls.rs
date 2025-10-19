@@ -5,7 +5,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
 };
 use p384::{PublicKey, ecdh::EphemeralSecret, pkcs8::EncodePublicKey};
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use rsa::{
     RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey, spki::SignatureBitStringEncoding},
@@ -13,13 +13,14 @@ use rsa::{
     signature::{RandomizedSigner, Verifier},
 };
 use sha2::{Digest, Sha256, Sha384};
+use zeroize::Zeroize;
 
 fn main() {
     let encoded_rsa_public_key = fs::read("public_key.der").unwrap();
     let encoded_rsa_private_key = fs::read("private_key.der").unwrap();
     let rsa_private_key = RsaPrivateKey::from_pkcs8_der(&encoded_rsa_private_key).unwrap();
 
-    let server_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
+    let mut server_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
     let encoded_server_ecdh_public_key = PublicKey::from(&server_ecdh_private_key)
         .to_public_key_der()
         .unwrap()
@@ -45,20 +46,20 @@ fn main() {
     // hash of the server's encoded ECDH public key to avoid timing attacks
     let decoded_server_ecdh_public_key =
         PublicKey::from_public_key_der(&encoded_server_ecdh_public_key).unwrap();
-    let client_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
+    let mut client_ecdh_private_key = EphemeralSecret::random(&mut OsRng);
     let encoded_client_ecdh_public_key = PublicKey::from(&client_ecdh_private_key)
         .to_public_key_der()
         .unwrap()
         .to_vec();
-    let client_exchange = client_ecdh_private_key.diffie_hellman(&decoded_server_ecdh_public_key);
-    let client_master_secret = client_exchange.raw_secret_bytes();
-    let hash = Sha256::digest(client_master_secret);
-    let aes_key = Key::<Aes256Gcm>::from_slice(&hash);
+    let client_exchange = client_ecdh_private_key.diffie_hellman(&decoded_server_ecdh_public_key); // only on its own line for comparison purposes
+    let client_master_secret = client_exchange.raw_secret_bytes(); // just a reference
+    let mut hash = Sha256::digest(client_master_secret);
+    let aes_key = Key::<Aes256Gcm>::from_slice(&hash); // just a reference
 
     let decoded_client_ecdh_public_key =
         PublicKey::from_public_key_der(&encoded_client_ecdh_public_key).unwrap();
-    let server_exchange = server_ecdh_private_key.diffie_hellman(&decoded_client_ecdh_public_key);
-    let server_master_secret = server_exchange.raw_secret_bytes();
+    let server_exchange = server_ecdh_private_key.diffie_hellman(&decoded_client_ecdh_public_key); // only on its own line for comparison purposes
+    let server_master_secret = server_exchange.raw_secret_bytes(); // just a reference
     if client_master_secret != server_master_secret {
         panic!("Master secrets don't match.");
     }
@@ -84,4 +85,8 @@ fn main() {
     if plaintext != recovered {
         panic!("Plaintexts don't match.");
     }
+
+    server_ecdh_private_key.zeroize();
+    client_ecdh_private_key.zeroize();
+    hash.zeroize(); // zeroizes aes_key
 }

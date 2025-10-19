@@ -3,3 +3,4 @@ tls
 tls.exe
 target/
 .vscode/
+.venv/

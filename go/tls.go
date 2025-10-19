@@ -16,6 +16,12 @@ import (
 	"os"
 )
 
+func zeroize(input []byte) {
+	for i := range input {
+		input[i] = 0
+	}
+}
+
 func main() {
 	encodedRsaPublicKey, _ := os.ReadFile("public_key.der")
 	encodedRsaPrivateKey, _ := os.ReadFile("private_key.der")
@@ -78,6 +84,8 @@ func main() {
 	if !bytes.Equal(clientMasterSecret, serverMasterSecret) {
 		log.Fatalln("Master secrets don't match.")
 	}
+	zeroize(clientMasterSecret)
+	zeroize(serverMasterSecret)
 
 	plaintext := "Hello world!"
 	aad := []byte("authenticated but unencrypted data")
@@ -92,4 +100,7 @@ func main() {
 	if plaintext != recovered {
 		log.Fatalln("Plaintexts don't match.")
 	}
+
+	// *ecdh.PrivateKey currently doesn't have a manual destructor
+	zeroize(aesKey[:])
 }
