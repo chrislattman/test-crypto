@@ -24,7 +24,9 @@ The public key in SPKI DER format was derived with:
 openssl rsa -pubout -inform PEM -in keypair.pem -outform DER -out public_key.der
 ```
 
-These commands use OpenSSL. Popular TLS libraries for embedded platforms are wolfSSL and Mbed TLS.
+These commands use OpenSSL. Popular TLS libraries for embedded platforms are wolfCrypt (part of wolfSSL) and TF-PSA-Crypto (part of Mbed TLS)
+
+- These embedded crypto libraries are also used for secure bootloaders: wolfBoot and MCUboot respectively
 
 > C# offers a cryptography interface, but it's not fully cross-platform, as it requires either using the Cryptography API: Next Generation (CNG) library (bcrypt.dll) on Windows, or OpenSSL for non-Windows platforms.
 
