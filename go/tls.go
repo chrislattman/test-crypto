@@ -12,6 +12,8 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
+	"flag"
+	"fmt"
 	"log"
 	"os"
 )
@@ -23,6 +25,16 @@ func zeroize(input []byte) {
 }
 
 func main() {
+	verbose := flag.Bool("verbose", false, "Enable verbose output")
+	config := flag.String("config", "", "Config file") // No support for shorthand
+	flag.Parse()
+	if *verbose {
+		fmt.Println("Verbose!")
+	}
+	if *config != "" {
+		fmt.Printf("Config file = %v\n", *config)
+	}
+
 	encodedRsaPublicKey, _ := os.ReadFile("public_key.der")
 	encodedRsaPrivateKey, _ := os.ReadFile("private_key.der")
 	var rsaPrivateKey *rsa.PrivateKey

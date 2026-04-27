@@ -4,6 +4,7 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit, Payload},
 };
+use clap::Parser;
 use p384::{PublicKey, ecdh::EphemeralSecret, pkcs8::EncodePublicKey};
 use rand::{RngCore, rngs::OsRng};
 use rsa::{
@@ -15,7 +16,27 @@ use rsa::{
 use sha2::{Digest, Sha256, Sha384};
 use zeroize::Zeroize;
 
+#[derive(Parser)]
+struct Args {
+    /// Enable verbose output
+    #[arg(long)]
+    verbose: bool,
+
+    /// Config file
+    #[arg(short, long)]
+    config: Option<String>,
+}
+
 fn main() {
+    let args = Args::parse();
+    if args.verbose {
+        println!("Verbose!");
+    }
+    match args.config {
+        Some(name) => println!("Config file = {name}"),
+        None => (),
+    }
+
     let encoded_rsa_public_key = fs::read("public_key.der").unwrap();
     let encoded_rsa_private_key = fs::read("private_key.der").unwrap();
     let rsa_private_key = RsaPrivateKey::from_pkcs8_der(&encoded_rsa_private_key).unwrap();
