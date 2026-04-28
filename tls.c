@@ -132,7 +132,7 @@ int main(void)
     OPENSSL_cleanse(client_master_secret, client_master_secret_len);
     OPENSSL_cleanse(server_master_secret, server_master_secret_len);
 
-    RAND_bytes(iv, 12);
+    RAND_bytes(iv, 12); // uses RDRAND and /dev/urandom
     aes_gcm_encrypt_context = EVP_CIPHER_CTX_new();
     EVP_EncryptInit_ex(aes_gcm_encrypt_context, EVP_aes_256_gcm(), NULL, aes_key, iv);
     EVP_EncryptUpdate(aes_gcm_encrypt_context, NULL, &len, (const unsigned char *) aad, strlen(aad));
