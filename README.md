@@ -2,7 +2,15 @@
 
 While not quite TLS (no certificate chain validation), these examples try to replicate what a TLS session would look like. It demonstrates perfect forward secrecy.
 
-Use the provided Makefile to run the examples. Install `libssl-dev` and `libtss2-dev` for the POSIX C example.
+Use the provided Makefile to run the examples. Before running any of them, make sure to create a Python virtual environment, install the dependencies in requirements.txt, and run
+
+```
+conan profile detect --force
+conan install . --output-folder=build --build=missing -s build_type=Debug
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug
+```
+
+to generate the build files for the POSIX C project.
 
 Note: these examples allow you to use a pre-generated RSA key pair used to sign the "server" ephemeral ECDH public key. However, some of the examples allow you to use the Trusted Platform Module (TPM, if available) to securely generate a key pair and sign the server's public key that way; use the `--tpm` flag.
 
