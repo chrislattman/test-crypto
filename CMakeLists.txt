@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(test-crypto C)
 
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 
 add_executable(tls tls.c)
 target_link_libraries(tls PRIVATE OpenSSL::Crypto)
