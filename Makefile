@@ -21,6 +21,6 @@ rust:
 	cargo run -q --bin tls
 
 clean:
-	rm -rf tls target
+	cmake --build build --target clean && cargo clean && rm -f tls
 
 .PHONY: java python nodejs go c winc rust clean
