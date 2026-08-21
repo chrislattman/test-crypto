@@ -6,7 +6,7 @@ Use the provided Makefile to run the examples. Before running any of them, make 
 
 ```
 conan profile detect --force
-conan install . --output-folder=build --build=missing -s build_type=Debug
+conan install . --lockfile=conan.lock --output-folder=build --build=missing -s build_type=Debug
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug
 ```
 
