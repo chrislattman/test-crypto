@@ -15,7 +15,8 @@ c:
 # 	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls.c -lcrypto && ./tls
 
 winc:
-	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls_cng.c -lbcrypt -lcrypt32 && ./tls
+	cmake --build build && cmake --build build --target run-tls
+# 	gcc -Wall -Wextra -Werror -pedantic -std=c99 -o tls tls_cng.c -lbcrypt -lcrypt32 && ./tls
 
 rust:
 	cargo run -q --bin tls
