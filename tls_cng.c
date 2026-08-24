@@ -429,8 +429,8 @@ int main(void) {
         puts("Master secrets don't match.");
         exit(1);
     }
-    SecureZeroMemory(client_master_secret, clientMasterSecretLen);
-    SecureZeroMemory(server_master_secret, serverMasterSecretLen);
+    SecureZeroMemory(clientMasterSecret, clientMasterSecretLen);
+    SecureZeroMemory(serverMasterSecret, serverMasterSecretLen);
 
     BCryptOpenAlgorithmProvider(&rng, BCRYPT_RNG_ALGORITHM, NULL, 0);
     BCryptGenRandom(rng, iv, sizeof(iv), 0);
