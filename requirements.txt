@@ -290,8 +290,9 @@ colorama==0.4.6 \
     --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
     # via conan
-conan==2.3.1 \
-    --hash=sha256:e87a3f433034cc1910b0f9d610be89c7455194eb8e4c459b6e3ad5f4141c9dc6
+conan==2.31.2 \
+    --hash=sha256:87a8ae0b492c4fd4291d4146bf80522a00d6157637bed7ec055787e1a51f75d6 \
+    --hash=sha256:d820e9f5ac44eca1567874f6a7c83586c16a3df5ebca006d9c0c6933fbb375b1
     # via test-crypto (pyproject.toml)
 cryptography==50.0.0 \
     --hash=sha256:031e2d5dd4bb9caa3ca9c82e5a197fd8ae680232cee62603d1a813f3f07e3d03 \
@@ -454,8 +455,9 @@ packaging==26.3 \
     --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
     --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
     # via tpm2-pytss
-patch-ng==1.17.4 \
-    --hash=sha256:627abc5bd723c8b481e96849b9734b10065426224d4d22cd44137004ac0d4ace
+patch-ng==1.19.1 \
+    --hash=sha256:036a3cc00134ec53f37e92333958ee75e117f2e62a5ec2b85c7122e5e815c29e \
+    --hash=sha256:d45fd47b3f74b48c3e336690341876bb26244a077a06f5f7e6e47c19c15c1ca4
     # via conan
 pycparser==3.0 \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
