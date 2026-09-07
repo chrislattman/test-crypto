@@ -6,3 +6,5 @@ target/
 .venv/
 build/
 CMakeUserPresets.json
+bin/
+obj/
