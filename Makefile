@@ -27,4 +27,4 @@ csharp:
 clean:
 	cmake --build build --target clean && cargo clean && rm -f tls && dotnet clean
 
-.PHONY: java python nodejs go c winc rust clean
+.PHONY: java python nodejs go c winc rust csharp clean
