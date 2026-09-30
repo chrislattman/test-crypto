@@ -17,6 +17,8 @@ Note: these examples allow you to use a pre-generated RSA key pair used to sign 
 - Run `sudo chmod 666 /dev/tpm0 && sudo chmod 666 /dev/tpmrm0` first
 - If using the TPM, the securely generated key pair is lost on reboot by default
 - TPMs are also used to store biometric information and other secrets
+- PCs with modern Intel ME/AMD PSP-enabled processors have firmware TPMs (fTPMs) that expose a TPM 2.0-compliant API
+- ARM devices with TrustZone allow a fTPM to run in the Secure World
 
 The key pair (sometimes just called the RSA "key") in PEM (text) format was generated with:
 
